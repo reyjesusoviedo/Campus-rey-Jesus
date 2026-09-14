@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entrar · Campus Rey Jesús Oviedo</title>
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="stylesheet" href="assets/piloto.css">
+</head>
+<body class="auth-page">
+<main class="auth-card">
+  <div class="brand" data-brand></div>
+  <h1>Entrar al campus</h1>
+  <p class="subtle" style="margin:0">Acceso solo con invitación de tu maestro o maestra.</p>
+
+  <div class="auth-switch" role="group" aria-label="Forma de entrar">
+    <button type="button" data-mode="password" aria-pressed="true">Con contraseña</button>
+    <button type="button" data-mode="magic" aria-pressed="false">Con enlace al correo</button>
+  </div>
+
+  <div class="field"><label for="email">Correo</label><input id="email" type="email" autocomplete="email" required></div>
+  <div class="field" id="pass-field"><label for="password">Contraseña</label><input id="password" type="password" autocomplete="current-password"></div>
+  <p class="form-error" id="error" role="alert"></p>
+  <button class="button" id="go" style="width:100%">Entrar</button>
+  <p class="meta" id="hint" style="margin-top:14px">¿Primera vez? Pide a tu maestro el <strong>código del grupo</strong>: lo introducirás una vez dentro.</p>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/db.js"></script>
+<script>
+(async () => {
+  const { sb, cfg, esc, toast } = Campus;
+  document.querySelector("[data-brand]").innerHTML = `<span class="brand-mark">${esc(cfg.brandShort)}</span><span>${esc(cfg.brand)}<small>${esc(cfg.tagline)}</small></span>`;
+
+  // Si ya hay sesión (o llega desde un enlace mágico), entrar directamente
+  sb.auth.onAuthStateChange((event, session) => { if (session) location.replace("panel.html"); });
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) { location.replace("panel.html"); return; }
+
+  let mode = "password";
+  const err = document.getElementById("error");
+  document.querySelectorAll("[data-mode]").forEach(b => b.addEventListener("click", () => {
+    mode = b.dataset.mode;
+    document.querySelectorAll("[data-mode]").forEach(x => x.setAttribute("aria-pressed", x === b));
+    document.getElementById("pass-field").hidden = mode !== "password";
+    document.getElementById("go").textContent = mode === "password" ? "Entrar" : "Enviarme el enlace";
+    err.textContent = "";
+  }));
+
+  document.getElementById("go").addEventListener("click", async () => {
+    err.textContent = "";
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+    if (!email) { err.textContent = "Escribe tu correo."; return; }
+    const btn = document.getElementById("go"); btn.disabled = true;
+    try {
+      if (mode === "password") {
+        if (!password) { err.textContent = "Escribe tu contraseña."; return; }
+        const { error } = await sb.auth.signInWithPassword({ email, password });
+        if (error) { err.textContent = "Correo o contraseña incorrectos."; return; }
+        location.replace("panel.html");
+      } else {
+        const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.href.replace(/[^/]*$/, "index.html") } });
+        if (error) { err.textContent = error.message.includes("Signups") ? "Este correo no tiene invitación. Pide a tu maestro que te invite." : error.message; return; }
+        toast("Enlace enviado. Revisa tu correo.");
+        document.getElementById("hint").textContent = "Te hemos enviado un enlace a " + email + ". Ábrelo desde este mismo dispositivo.";
+      }
+    } finally { btn.disabled = false; }
+  });
+  document.getElementById("password").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("go").click(); });
+})();
+</script>
+</body>
+</html>
