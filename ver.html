@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clase en directo · Campus Rey Jesús Oviedo</title>
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="stylesheet" href="assets/piloto.css">
+<style>
+  body { background: var(--paper); }
+  .view-top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 20px; background: var(--navy); color: white; }
+  .view-top .brand { color: white; padding: 0; }
+  .view-top h1 { margin: 0; font-family: Georgia, serif; font-size: 1.2rem; flex: 1; min-width: 200px; }
+  .view-top .meta { color: #c9d2dc; }
+  .view-body { padding: 16px; max-width: 1200px; margin: 0 auto; }
+  .stage { min-height: 70vh; }
+  .stage-frame { height: 80vh; }
+  .view-wait { padding: 60px 20px; text-align: center; color: var(--muted); }
+  .view-wait h2 { font-family: Georgia, serif; color: var(--ink); }
+</style>
+</head>
+<body>
+<header class="view-top"><a class="brand" href="index.html" data-brand></a><h1 id="title">Clase</h1><span class="meta" id="status"></span><a class="button gold small" id="join" hidden>Participar</a></header>
+<main class="view-body" id="main"><div class="view-wait"><p>Conectando…</p></div></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/db.js"></script>
+<script>
+(async () => {
+  const { sb, cfg, esc } = Campus;
+  document.querySelector("[data-brand]").innerHTML = `<span class="brand-mark">${esc(cfg.brandShort)}</span><span>${esc(cfg.brand)}<small>${esc(cfg.tagline)}</small></span>`;
+  const code = (new URLSearchParams(location.search).get("c") || "").toUpperCase();
+  const main = document.getElementById("main");
+  if (!code) { main.innerHTML = `<div class="view-wait"><h2>Falta el código</h2><p>Pide a tu maestro el enlace de «solo ver».</p></div>`; return; }
+  document.getElementById("join").href = "index.html?clase=" + code; document.getElementById("join").hidden = false;
+  let currentMaterial = null, frame = null, lastSection = null; const cache = {};
+  function post(msg) { try { frame?.contentWindow?.postMessage(Object.assign({ campus: "campus" }, msg), "*"); } catch {} }
+  window.addEventListener("message", e => { const d = e.data || {}; if (d.campus === "lesson" && d.type === "ready" && frame && e.source === frame.contentWindow) { post({ type: "context", role: "viewer", follow: true }); if (lastSection) post({ type: "goto", section: lastSection }); } });
+  async function mount(m) {
+    currentMaterial = m.id; frame = null;
+    main.innerHTML = `<div class="stage-head"><span class="eyebrow">En pantalla</span><strong>${esc(m.title)}</strong><button class="button secondary small" id="full">Pantalla completa</button></div><div class="stage" id="stage"></div>`;
+    document.getElementById("full").addEventListener("click", () => { const el = document.getElementById("stage"); (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el); });
+    const stage = document.getElementById("stage");
+    if (m.kind === "text") { stage.innerHTML = `<div class="material-text stage-text">${esc(m.content)}</div>`; return; }
+    frame = document.createElement("iframe"); frame.className = "stage-frame"; frame.title = m.title; stage.appendChild(frame);
+    if (m.kind === "link") { frame.src = m.url; return; }
+    if (/\.html?$/i.test(m.storage_path || "")) {
+      frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
+      if (!cache[m.id]) { const { data, error } = await sb.storage.from("materials").download(m.storage_path); if (error) { stage.innerHTML = `<p class="notice">No se pudo cargar la lección.</p>`; return; } cache[m.id] = await data.text(); }
+      frame.srcdoc = cache[m.id]; return;
+    }
+    const { data, error } = await sb.storage.from("materials").createSignedUrl(m.storage_path, 3600);
+    if (error) { stage.innerHTML = `<p class="notice">No se pudo cargar el archivo.</p>`; return; }
+    frame.src = data.signedUrl;
+  }
+  async function tick() {
+    const { data, error } = await sb.rpc("public_session_view", { p_code: code });
+    if (error || !data) { main.innerHTML = `<div class="view-wait"><h2>Esta clase no está en modo «solo ver»</h2><p>Pide a tu maestro que lo active o entra como invitado con el botón «Participar».</p></div>`; currentMaterial = null; return; }
+    document.getElementById("title").textContent = data.title + " · " + data.group;
+    document.getElementById("status").textContent = data.status === "live" ? "En directo" : data.status === "closed" ? "Terminada" : "Sin iniciar";
+    if (!data.material) { if (currentMaterial !== null || !main.querySelector(".view-wait")) main.innerHTML = `<div class="view-wait"><h2>${data.status === "live" ? "El maestro todavía no ha proyectado nada" : "La clase aún no ha empezado"}</h2><p>Esta pantalla se actualiza sola.</p></div>`; currentMaterial = null; return; }
+    if (data.material.id !== currentMaterial) await mount(data.material);
+    const sec = data.state?.section; if (sec && sec !== lastSection) { lastSection = sec; post({ type: "goto", section: sec }); }
+  }
+  await tick(); setInterval(tick, 4000);
+})();
+</script>
+</body>
+</html>
