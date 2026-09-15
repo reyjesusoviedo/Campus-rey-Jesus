@@ -325,7 +325,23 @@
     bindFiles(root);
   }
   function bindFiles(root) {
-    root.querySelectorAll("[data-file]").forEach(a => a.addEventListener("click", async e => { e.preventDefault(); const bucket = a.dataset.bucket || "submissions"; const { data, error } = await sb.storage.from(bucket).createSignedUrl(a.dataset.file, 600); if (error) { toast("No se pudo abrir el archivo"); return; } window.open(data.signedUrl, "_blank"); }));
+    root.querySelectorAll("[data-file]").forEach(a => a.addEventListener("click", async e => {
+      e.preventDefault();
+      const bucket = a.dataset.bucket || "submissions", path = a.dataset.file;
+      // Supabase sirve los .html como texto plano: el campus los descarga y los abre él mismo como página
+      if (/\.html?$/i.test(path)) {
+        const win = window.open("", "_blank");
+        if (win) win.document.write("<p style='font-family:sans-serif;padding:20px'>Abriendo la lección…</p>");
+        const { data, error } = await sb.storage.from(bucket).download(path);
+        if (error) { toast("No se pudo abrir la lección"); win && win.close(); return; }
+        const url = URL.createObjectURL(new Blob([await data.text()], { type: "text/html;charset=utf-8" }));
+        if (win) win.location.href = url; else location.href = url;
+        return;
+      }
+      const { data, error } = await sb.storage.from(bucket).createSignedUrl(path, 600);
+      if (error) { toast("No se pudo abrir el archivo"); return; }
+      window.open(data.signedUrl, "_blank");
+    }));
   }
 
   // ---- ayuda ----
