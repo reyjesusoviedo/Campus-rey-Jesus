@@ -23,36 +23,57 @@
 
   // ---------- carga ----------
   async function loadSession() {
-    const { data: s, error } = await sb.from("sessions").select("*, group:groups(*, memberships(user_id, role, profile:profiles(full_name)))").eq("id", sessionId).maybeSingle();
-    if (error || !s) { $("loading").textContent = "No tienes acceso a esta clase o no existe."; return false; }
+    const { data: s, error } = await sb.from("sessions").select("*, group:groups(*)").eq("id", sessionId).maybeSingle();
+    if (error || !s) { $("loading").textContent = "No tienes acceso a esta clase o no existe." + (error ? " (" + error.message + ")" : ""); return false; }
     S.session = s; S.group = s.group;
-    S.members = s.group.memberships || [];
+    const mm = await sb.from("memberships").select("user_id, role").eq("group_id", s.group_id);
+    if (mm.error) loadError("los miembros", mm.error);
+    const by = await namesFor((mm.data || []).map(m => m.user_id));
+    S.members = (mm.data || []).map(m => ({ ...m, profile: by(m.user_id) }));
     S.teacher = me.profile.role === "coordinator" || s.group.teacher_id === me.user.id || S.members.some(m => m.user_id === me.user.id && m.role === "teacher");
     return true;
   }
   async function loadActivities() {
-    const { data } = await sb.from("activities").select("*").eq("session_id", sessionId).order("position").order("created_at");
+    const { data, error } = await sb.from("activities").select("*").eq("session_id", sessionId).order("position").order("created_at");
+    if (error) { loadError("las actividades", error); return; }
     S.activities = data || [];
     const open = S.activities.find(a => a.status === "open");
     if (!S.teacher) S.focus = open ? open.id : (S.session.status === "closed" ? S.focus : null);
     else if (!S.focus || !S.activities.some(a => a.id === S.focus)) S.focus = open ? open.id : (S.activities[0]?.id || null);
   }
-  async function loadMaterials() { const { data } = await sb.from("materials").select("*").eq("session_id", sessionId).order("position").order("created_at"); S.materials = data || []; }
-  async function loadQuestions() {
-    const { data } = await sb.from("questions").select("*, author:profiles(full_name)").eq("session_id", sessionId).order("created_at");
-    S.questions = data || [];
-    const ids = S.questions.map(q => q.id);
-    S.votes = ids.length ? (await sb.from("question_votes").select("*").in("question_id", ids)).data || [] : [];
+  async function loadMaterials() { const { data, error } = await sb.from("materials").select("*").eq("session_id", sessionId).order("position").order("created_at"); if (error) { loadError("el material", error); return; } S.materials = data || []; }
+  const nameCache = {};
+  async function namesFor(ids) {
+    const missing = [...new Set(ids)].filter(id => id && !nameCache[id]);
+    if (missing.length) { const { data } = await sb.from("profiles").select("id, full_name").in("id", missing); (data || []).forEach(p => nameCache[p.id] = p.full_name); }
+    return id => ({ full_name: nameCache[id] || "Participante" });
   }
-  async function loadHelp() { const { data } = await sb.from("help_requests").select("*, author:profiles(full_name)").eq("session_id", sessionId).eq("status", "open"); S.help = data || []; }
+  function loadError(what, error) { console.error(what, error); if (!S.errShown) { S.errShown = true; toast("Error al cargar " + what + ": " + error.message); setTimeout(() => S.errShown = false, 15000); } }
+  async function loadQuestions() {
+    const { data, error } = await sb.from("questions").select("*").eq("session_id", sessionId).order("created_at");
+    if (error) { loadError("las dudas", error); return; }
+    const by = await namesFor((data || []).map(q => q.user_id));
+    S.questions = (data || []).map(q => ({ ...q, author: by(q.user_id) }));
+    const ids = S.questions.map(q => q.id);
+    const v = ids.length ? await sb.from("question_votes").select("*").in("question_id", ids) : { data: [] };
+    if (v.error) loadError("los votos", v.error); S.votes = v.data || [];
+  }
+  async function loadHelp() {
+    const { data, error } = await sb.from("help_requests").select("*").eq("session_id", sessionId).eq("status", "open");
+    if (error) { loadError("los avisos de ayuda", error); return; }
+    const by = await namesFor((data || []).map(h => h.user_id));
+    S.help = (data || []).map(h => ({ ...h, author: by(h.user_id) }));
+  }
   async function loadMyResponses() {
     const ids = S.activities.map(a => a.id); if (!ids.length) { S.myResponses = {}; return; }
-    const { data } = await sb.from("responses").select("*").in("activity_id", ids).eq("user_id", me.user.id);
+    const { data, error } = await sb.from("responses").select("*").in("activity_id", ids).eq("user_id", me.user.id);
+    if (error) { loadError("tus respuestas", error); return; }
     S.myResponses = Object.fromEntries((data || []).map(r => [r.activity_id, r]));
   }
   async function loadResults(activityId) {
     if (!activityId) return;
-    const { data } = await sb.rpc("get_activity_results", { p_activity: activityId });
+    const { data, error } = await sb.rpc("get_activity_results", { p_activity: activityId });
+    if (error) { loadError("los resultados", error); return; }
     S.results[activityId] = data;
   }
 
@@ -438,8 +459,8 @@
     }
     if (S.tab === "people") {
       const open = S.activities.find(a => a.status === "open"); const answered = new Set((S.results[open?.id]?.items || []).map(i => i.user_id));
-      const students = S.members.filter(m => m.role === "student");
-      const rows = students.map(m => { const on = !!S.presence[m.user_id], h = S.help.find(x => x.user_id === m.user_id); return `<li><span class="dot ${on ? "on" : ""}"></span><span>${esc(m.profile?.full_name || "")}</span><span class="flags">${h ? `<span class="tag help">Pide ayuda</span><button class="button secondary small" data-resolve="${h.id}">Atendido</button>` : ""}${open && answered.has(m.user_id) ? `<span class="tag done">Respondió</span>` : ""}</span></li>`; });
+      const students = S.members.filter(m => m.role === "student" || m.role === "guest");
+      const rows = students.map(m => { const on = !!S.presence[m.user_id], h = S.help.find(x => x.user_id === m.user_id); return `<li><span class="dot ${on ? "on" : ""}"></span><span>${esc(m.profile?.full_name || "")}${m.role === "guest" ? ` <span class="meta">(invitado)</span>` : ""}</span><span class="flags">${h ? `<span class="tag help">Pide ayuda</span><button class="button secondary small" data-resolve="${h.id}">Atendido</button>` : ""}${open && answered.has(m.user_id) ? `<span class="tag done">Respondió</span>` : ""}</span></li>`; });
       const guests = Object.values(S.presence).filter(p => !students.some(m => m.user_id === p.id) && p.id !== me.user.id).map(p => `<li><span class="dot on"></span><span>${esc(p.name)}</span><span class="meta" style="margin-left:auto">${esc(p.roleLabel)}</span></li>`);
       side.innerHTML = `<p class="meta" style="margin:0 0 8px">${Object.keys(S.presence).length} conectados · ${students.length} en el grupo</p><ul class="presence">${rows.join("")}${guests.join("")}</ul>${S.help.filter(h => h.message).map(h => `<p class="live-answer" style="margin-top:10px"><strong>${esc(h.author?.full_name)}:</strong> ${esc(h.message)}</p>`).join("")}`;
       side.querySelectorAll("[data-resolve]").forEach(b => b.addEventListener("click", async () => { await sb.from("help_requests").update({ status: "resolved" }).eq("id", b.dataset.resolve); refreshAll(true); }));
