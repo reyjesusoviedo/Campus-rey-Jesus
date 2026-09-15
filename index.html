@@ -14,15 +14,17 @@
   <p class="subtle" style="margin:0">Acceso solo con invitación de tu maestro o maestra.</p>
 
   <div class="auth-switch" role="group" aria-label="Forma de entrar">
-    <button type="button" data-mode="password" aria-pressed="true">Con contraseña</button>
-    <button type="button" data-mode="magic" aria-pressed="false">Con enlace al correo</button>
+    <button type="button" data-mode="signup" aria-pressed="true">Primera vez</button>
+    <button type="button" data-mode="magic" aria-pressed="false">Ya tengo cuenta</button>
+    <button type="button" data-mode="password" aria-pressed="false">Contraseña</button>
   </div>
 
+  <div class="field" id="name-field"><label for="name">Tu nombre y apellido</label><input id="name" autocomplete="name"></div>
   <div class="field"><label for="email">Correo</label><input id="email" type="email" autocomplete="email" required></div>
-  <div class="field" id="pass-field"><label for="password">Contraseña</label><input id="password" type="password" autocomplete="current-password"></div>
+  <div class="field" id="pass-field" hidden><label for="password">Contraseña</label><input id="password" type="password" autocomplete="current-password"></div>
   <p class="form-error" id="error" role="alert"></p>
-  <button class="button" id="go" style="width:100%">Entrar</button>
-  <p class="meta" id="hint" style="margin-top:14px">¿Primera vez? Pide a tu maestro el <strong>código del grupo</strong>: lo introducirás una vez dentro.</p>
+  <button class="button" id="go" style="width:100%">Crear mi acceso</button>
+  <p class="meta" id="hint" style="margin-top:14px">Recibirás un enlace en tu correo para entrar, sin contraseña. Después, dentro, escribe el <strong>código del grupo</strong> que te ha dado tu maestro.</p>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -38,13 +40,15 @@
   const { data: { session } } = await sb.auth.getSession();
   if (session) { location.replace("panel.html"); return; }
 
-  let mode = "password";
+  let mode = "signup";
   const err = document.getElementById("error");
   document.querySelectorAll("[data-mode]").forEach(b => b.addEventListener("click", () => {
     mode = b.dataset.mode;
     document.querySelectorAll("[data-mode]").forEach(x => x.setAttribute("aria-pressed", x === b));
     document.getElementById("pass-field").hidden = mode !== "password";
-    document.getElementById("go").textContent = mode === "password" ? "Entrar" : "Enviarme el enlace";
+    document.getElementById("name-field").hidden = mode !== "signup";
+    document.getElementById("go").textContent = mode === "password" ? "Entrar" : mode === "signup" ? "Crear mi acceso" : "Enviarme el enlace";
+    document.getElementById("hint").textContent = mode === "signup" ? "Recibirás un enlace en tu correo para entrar, sin contraseña. Después, dentro, escribe el código del grupo que te ha dado tu maestro." : mode === "magic" ? "Te enviaremos un enlace al correo con el que te diste de alta." : "Acceso con contraseña para maestros y coordinación.";
     err.textContent = "";
   }));
 
@@ -61,8 +65,10 @@
         if (error) { err.textContent = "Correo o contraseña incorrectos."; return; }
         location.replace("panel.html");
       } else {
-        const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.href.replace(/[^/]*$/, "index.html") } });
-        if (error) { err.textContent = error.message.includes("Signups") ? "Este correo no tiene invitación. Pide a tu maestro que te invite." : error.message; return; }
+        const name = document.getElementById("name").value.trim();
+        if (mode === "signup" && !name) { err.textContent = "Escribe tu nombre."; return; }
+        const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: mode === "signup", data: { full_name: name || undefined }, emailRedirectTo: location.href.replace(/[^/]*$/, "index.html") } });
+        if (error) { err.textContent = error.message.includes("Signups") ? "Este correo no tiene acceso. Usa la pestaña «Primera vez»." : error.message; return; }
         toast("Enlace enviado. Revisa tu correo.");
         document.getElementById("hint").textContent = "Te hemos enviado un enlace a " + email + ". Ábrelo desde este mismo dispositivo.";
       }
