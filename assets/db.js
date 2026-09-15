@@ -44,10 +44,19 @@
     const brand = document.querySelector("[data-brand]");
     if (brand) brand.innerHTML = `<span class="brand-mark">${esc(cfg.brandShort)}</span><span>${esc(cfg.brand)}<small>${esc(cfg.tagline)}</small></span>`;
     const foot = document.querySelector("[data-profile]");
-    if (foot) foot.innerHTML = `<div class="profile-mini"><span class="avatar teal">${esc(initials(me.profile.full_name))}</span><div><strong>${esc(me.profile.full_name)}</strong><span>${ROLE_LABEL[me.profile.role] || ""}</span></div></div>
+    const anon = !!me.user.is_anonymous;
+    if (foot) foot.innerHTML = `<div class="profile-mini"><span class="avatar teal">${esc(initials(me.profile.full_name))}</span><div><strong>${esc(me.profile.full_name)}</strong><span>${anon ? "Invitado/a" : ROLE_LABEL[me.profile.role] || ""}</span></div></div>
+      ${anon ? `<button class="button small" style="margin-top:12px;width:100%" data-keep>Guardar mi acceso</button>` : ""}
       <button class="button secondary small" style="margin-top:12px;width:100%" data-rename>Cambiar mi nombre</button>
       <button class="button secondary small" style="margin-top:8px;width:100%" data-logout>Salir</button>`;
     document.querySelector("[data-logout]")?.addEventListener("click", async () => { await sb.auth.signOut(); location.replace("index.html"); });
+    document.querySelector("[data-keep]")?.addEventListener("click", async () => {
+      const email = prompt("Escribe tu correo para conservar tu acceso al campus:");
+      if (!email || !email.includes("@")) return;
+      const { error } = await sb.auth.updateUser({ email: email.trim() });
+      if (error) { toast("No se pudo guardar: " + error.message); return; }
+      alert("Te hemos enviado un correo a " + email.trim() + ". Ábrelo para confirmar. Después podrás entrar con «Ya tengo cuenta» y unirte a tu grupo con el código de grupo.");
+    });
     document.querySelector("[data-rename]")?.addEventListener("click", async () => {
       const name = prompt("Tu nombre y apellido:", me.profile.full_name);
       if (!name || !name.trim()) return;
@@ -74,5 +83,6 @@
 
   function qs(name) { return new URLSearchParams(location.search).get(name); }
 
-  window.Campus = { sb, cfg, esc, fmtDate, initials, toast, currentProfile, requireUser, renderShell, isStaff, whatsappMessage, copy, qs, ROLE_LABEL };
+  const isAnon = me => !!me?.user?.is_anonymous;
+  window.Campus = { isAnon, sb, cfg, esc, fmtDate, initials, toast, currentProfile, requireUser, renderShell, isStaff, whatsappMessage, copy, qs, ROLE_LABEL };
 })();

@@ -11,7 +11,7 @@
     team_challenge: "Reto en equipo", submission: "Entrega (texto o foto)", exit_ticket: "Ticket de salida"
   };
 
-  const S = { lessonCache: {}, stageFrame: null, session: null, group: null, teacher: false, activities: [], materials: [], questions: [], votes: [], help: [], myResponses: {}, presence: {}, focus: null, tab: null, results: {}, members: [] };
+  const S = { lessonCache: {}, stageFrame: null, follow: true, lastSection: null, answersTimer: null, savedOnce: false, session: null, group: null, teacher: false, activities: [], materials: [], questions: [], votes: [], help: [], myResponses: {}, presence: {}, focus: null, tab: null, results: {}, members: [] };
   const $ = id => document.getElementById(id);
   const dialog = $("dialog");
   $("dialog-close").addEventListener("click", () => dialog.close());
@@ -79,6 +79,7 @@
     $("session-top").innerHTML = `<div><p class="eyebrow">${esc(S.group.name)}</p><h1>${esc(s.title)}</h1><p class="meta" style="margin:8px 0 0">${statusTag()} ${S.teacher ? `· <span class="meta">${Object.keys(S.presence).length} conectados</span>` : ""}</p></div>
       <div class="actions">
         ${zoom ? `<a class="button gold" target="_blank" rel="noopener" href="${esc(zoom)}">Abrir Zoom</a>` : ""}
+        ${S.teacher && s.status !== "closed" ? `<button class="button secondary" data-act="invite">Invitar a esta clase</button>` : ""}
         ${S.teacher && s.status === "scheduled" ? `<button class="button teal" data-act="start">Iniciar la clase</button>` : ""}
         ${S.teacher && s.status === "live" ? `<button class="button danger" data-act="end">Finalizar la clase</button>` : ""}
         ${S.teacher && s.status === "closed" ? `<button class="button secondary" data-act="recording">${s.recording_url ? "Cambiar grabación" : "Añadir grabación"}</button><button class="button secondary" data-act="reopen">Reabrir</button>` : ""}
@@ -95,7 +96,7 @@
     if (act === "end") {
       openDialog("Finalizar la clase", `<div class="inline-form"><div class="field"><label for="e-rec">Enlace de la grabación (puedes añadirlo después)</label><input id="e-rec" placeholder="https://…"></div><div class="field"><label for="e-sum">Resumen para el grupo (opcional)</label><textarea id="e-sum" rows="3"></textarea></div><button class="button danger" id="e-go">Finalizar</button></div>`, d => {
         d.querySelector("#e-go").addEventListener("click", async () => {
-          await sb.from("activities").update({ status: "closed" }).eq("session_id", sessionId).eq("status", "open");
+          await sb.from("activities").update({ status: "closed" }).eq("session_id", sessionId).eq("status", "open").or("content->>auto.is.null,content->>auto.neq.true");
           await sb.from("sessions").update({ status: "closed", recording_url: d.querySelector("#e-rec").value.trim() || null, summary: d.querySelector("#e-sum").value.trim() || null }).eq("id", sessionId);
           log("session_ended"); dialog.close(); toast("Clase finalizada");
         });
@@ -108,6 +109,7 @@
       });
       return;
     }
+    if (act === "invite") { inviteDialog(); return; }
     if (act === "reopen") { await sb.from("sessions").update({ status: "live" }).eq("id", sessionId); toast("Clase reabierta"); }
   }
 
@@ -135,6 +137,7 @@
   function stageHtml(m) {
     return `<div class="stage-head"><span class="eyebrow">En pantalla</span><strong>${esc(m.title)}</strong>
       ${S.teacher ? `<button class="button secondary small" data-project="${m.id}">Quitar de pantalla</button>` : `<a class="button secondary small" href="#" data-file="${esc(m.storage_path || "")}" data-bucket="materials" ${m.storage_path ? "" : "hidden"}>Abrir aparte</a>`}
+      ${S.teacher ? "" : `<button class="button ${S.follow ? "teal" : "secondary"} small" data-follow aria-pressed="${S.follow}">${S.follow ? "Siguiendo al maestro" : "Seguir al maestro"}</button><span class="meta" id="lesson-saved" hidden>Respuestas guardadas ✓</span>`}
       <button class="button secondary small" data-stage-full>Pantalla completa</button></div><div class="stage" id="stage"></div>`;
   }
   // Mantiene el iframe montado entre renders (moverlo o recrearlo recargaría la lección)
@@ -154,8 +157,77 @@
     if (renderAct && d) renderAct(area.querySelector("#act-slot"));
   }
   function bindStage(root, m) {
+    root.querySelector("[data-follow]")?.addEventListener("click", b => { S.follow = !S.follow; const btn = b.currentTarget; btn.setAttribute("aria-pressed", S.follow); btn.textContent = S.follow ? "Siguiendo al maestro" : "Seguir al maestro"; btn.classList.toggle("teal", S.follow); btn.classList.toggle("secondary", !S.follow); if (S.follow) gotoTeacherSection(true); });
     root.querySelector("[data-stage-full]")?.addEventListener("click", () => { const el = root.querySelector("#stage"); (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el); });
     bindMaterials(root); mountStage(root.querySelector("#stage"), m);
+  }
+
+
+  // ---- puente lección ↔ campus (postMessage) ----
+  function lessonActivityFor(materialId) { return S.activities.find(a => a.content?.material_id === materialId && a.content?.auto); }
+  async function ensureLessonActivity(m) {
+    if (!m) return;
+    const a = lessonActivityFor(m.id);
+    if (a) { if (a.status !== "open") await sb.from("activities").update({ status: "open" }).eq("id", a.id); return; }
+    await sb.from("activities").insert({ session_id: sessionId, kind: "submission", title: "Respuestas de la lección: " + m.title, status: "open", position: S.activities.length, content: { auto: true, material_id: m.id, prompt: "Respuestas escritas dentro de la lección «" + m.title + "»" } });
+  }
+  function postToLesson(msg) { try { S.stageFrame?.contentWindow?.postMessage(Object.assign({ campus: "campus" }, msg), "*"); } catch {} }
+  function gotoTeacherSection(force) {
+    const st = S.session.projected_state || {};
+    if (!st.section || S.teacher || !S.follow) return;
+    if (!force && st.section === S.lastSection) return;
+    S.lastSection = st.section; postToLesson({ type: "goto", section: st.section });
+  }
+  function formatAnswers(ans) {
+    if (typeof ans === "string") return ans;
+    return Object.entries(ans || {}).map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`).join("\n");
+  }
+  async function saveLessonAnswers(pm, answers) {
+    const a = lessonActivityFor(pm.id); if (!a) return;
+    const content = { text: formatAnswers(answers), answers, material_id: pm.id };
+    const existing = S.myResponses[a.id];
+    const { error } = existing ? await sb.from("responses").update({ content }).eq("id", existing.id)
+      : await sb.from("responses").insert({ activity_id: a.id, user_id: me.user.id, content, is_deferred: S.session.status === "closed" });
+    if (error) { console.warn(error); return; }
+    if (!existing) await loadMyResponses();
+    const el = $("lesson-saved"); if (el) { el.hidden = false; }
+    if (!S.savedOnce) { S.savedOnce = true; toast("Tus respuestas de la lección se guardan en el campus"); }
+  }
+  window.addEventListener("message", async e => {
+    const d = e.data || {}; if (d.campus !== "lesson" || !S.stageFrame || e.source !== S.stageFrame.contentWindow) return;
+    const pm = projectedMaterial(); if (!pm) return;
+    if (d.type === "ready") { postToLesson({ type: "context", role: S.teacher ? "teacher" : "student", name: me.profile.full_name, follow: S.follow }); if (!S.teacher) setTimeout(() => gotoTeacherSection(true), 300); }
+    if (d.type === "position" && S.teacher && d.section && d.section !== S.lastSection) {
+      S.lastSection = d.section;
+      clearTimeout(S.posTimer); S.posTimer = setTimeout(() => sb.from("sessions").update({ projected_state: { section: d.section, label: d.label || null, at: new Date().toISOString() } }).eq("id", sessionId).then(() => {}), 400);
+    }
+    if (d.type === "answers" && !S.teacher) { clearTimeout(S.answersTimer); S.answersTimer = setTimeout(() => saveLessonAnswers(pm, d.answers), 1500); }
+  });
+
+
+  // ---- invitar a esta clase (invitados sin registro + modo solo ver) ----
+  async function inviteDialog() {
+    let code = S.session.guest_code;
+    if (!code || !S.session.allow_guests) { const { data, error } = await sb.rpc("set_session_guest_code", { p_session: sessionId, p_enable: true }); if (error) { toast("No se pudo generar: " + error.message); return; } code = data; await loadSession(); }
+    const base = location.href.replace(/[^/]*$/, ""), link = base + "index.html?clase=" + code, viewLink = base + "ver.html?c=" + code;
+    const msg = `Te invito a la clase "${S.session.title}" (${S.group.name}) del campus ${Campus.cfg.brand}.\nEntra aquí: ${link}\nEscribe tu nombre y el código ${code}. Sin registro.`;
+    openDialog("Invitar a esta clase", `
+      <p class="subtle" style="margin-top:0">Quien tenga este código entra solo a esta clase, sin correo ni contraseña. El acceso caduca al terminar.</p>
+      <div class="code-box"><strong>${esc(code)}</strong><span class="meta">Código de la clase</span></div>
+      <div id="qr" style="display:grid;place-items:center;margin:14px 0"></div>
+      <div class="live-controls"><button class="button secondary small" id="inv-copy">Copiar enlace</button><a class="button small" target="_blank" rel="noopener" href="${Campus.whatsappMessage(msg)}">Enviar por WhatsApp</a></div>
+      <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+      <label style="display:flex;gap:10px;align-items:center;font-size:15px"><input type="checkbox" id="pv" ${S.session.public_view ? "checked" : ""}> <span><strong>Modo «solo ver»</strong><br><span class="meta">Un enlace público que muestra lo proyectado y sigue al maestro, sin poder responder. Para proyectar en una sala o compartir con quien solo mira.</span></span></label>
+      <div id="pv-link" ${S.session.public_view ? "" : "hidden"} style="margin-top:10px"><input readonly value="${esc(viewLink)}" style="width:100%"><div class="live-controls"><button class="button secondary small" id="pv-copy">Copiar enlace público</button></div></div>
+      <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+      <button class="button secondary small" id="inv-off">Dejar de admitir invitados</button>`, d => {
+      d.querySelector("#inv-copy").addEventListener("click", () => copy(link));
+      d.querySelector("#pv-copy")?.addEventListener("click", () => copy(viewLink));
+      d.querySelector("#pv").addEventListener("change", async e => { await sb.from("sessions").update({ public_view: e.target.checked }).eq("id", sessionId); d.querySelector("#pv-link").hidden = !e.target.checked; });
+      d.querySelector("#inv-off").addEventListener("click", async () => { await sb.rpc("set_session_guest_code", { p_session: sessionId, p_enable: false }); dialog.close(); toast("Invitados desactivados"); });
+      const draw = () => { try { d.querySelector("#qr").innerHTML = ""; new QRCode(d.querySelector("#qr"), { text: link, width: 180, height: 180 }); } catch {} };
+      if (window.QRCode) draw(); else { const sc = document.createElement("script"); sc.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"; sc.onload = draw; document.head.appendChild(sc); }
+    });
   }
 
   // ---- panel principal ----
@@ -163,9 +235,9 @@
     const main = $("main");
     if (S.teacher) return renderTeacherMain(main);
     const s = S.session;
-    const open = S.activities.find(a => a.status === "open");
+    const open = S.activities.find(a => a.status === "open" && !a.content?.auto);
     if (s.status === "closed") {
-      const done = S.activities.filter(a => a.status !== "draft");
+      const done = S.activities.filter(a => a.status !== "draft" && !a.content?.auto);
       if (S.focus && done.some(a => a.id === S.focus)) return renderStudentActivity(main, done.find(a => a.id === S.focus), true);
       main.innerHTML = `<div class="live-activity-head"><div><p class="eyebrow">Después de la clase</p><h2 style="margin:0">Actividades de esta clase</h2></div></div>
         ${done.length ? `<ul class="seq" style="margin-top:18px">${done.map(a => `<li><span class="kind">${KIND[a.kind]}</span><div class="row"><strong>${esc(a.title)}</strong>${S.myResponses[a.id] ? `<span class="tag">Respondida</span>` : ""}<button class="button secondary small" data-focus="${a.id}">${S.myResponses[a.id] ? "Ver" : "Hacer"}</button></div></li>`).join("")}</ul>` : `<p class="subtle">Esta clase no tuvo actividades.</p>`}`;
@@ -233,7 +305,7 @@
     }
     if (a.kind === "numeric") { const vals = items.map(i => i.content.value).filter(v => typeof v === "number"); const avg = vals.length ? (vals.reduce((x, y) => x + y, 0) / vals.length).toFixed(2) : "—"; return `<p class="meta">${vals.length} respuestas · media ${avg}</p>${S.teacher ? `<table class="responses-table">${items.map(i => `<tr><td>${esc(i.name || "Alumno/a")}</td><td>${esc(i.content.value)}</td></tr>`).join("")}</table>` : ""}`; }
     if (a.kind === "board" || (!S.teacher && a.results_shared)) return `<div class="live-board">${items.map(i => `<div class="live-note">${esc(i.content.text || "")}${S.teacher && i.name ? `<br><small class="meta">${esc(i.name)}</small>` : ""}</div>`).join("") || `<p class="meta">Sin aportaciones todavía.</p>`}</div>`;
-    return `<table class="responses-table">${items.map(i => `<tr><td>${esc(i.name || "Alumno/a")}${i.deferred ? ` <span class="tag closed">diferido</span>` : ""}</td><td>${esc(i.content.text || "")}${i.content.storage_path ? `<a class="live-link" data-file="${esc(i.content.storage_path)}" href="#">Ver archivo</a>` : ""}</td></tr>`).join("") || `<tr><td colspan="2" class="meta">Sin respuestas todavía.</td></tr>`}</table>`;
+    return `<table class="responses-table">${items.map(i => `<tr><td>${esc(i.name || "Alumno/a")}${i.guest ? ` <span class="tag">invitado</span>` : ""}${i.deferred ? ` <span class="tag closed">diferido</span>` : ""}</td><td>${esc(i.content.text || "")}${i.content.storage_path ? `<a class="live-link" data-file="${esc(i.content.storage_path)}" href="#">Ver archivo</a>` : ""}</td></tr>`).join("") || `<tr><td colspan="2" class="meta">Sin respuestas todavía.</td></tr>`}</table>`;
   }
 
   // ---- panel principal del maestro ----
@@ -327,7 +399,7 @@
     $("tabs").querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => { S.tab = b.dataset.tab; renderSide(); }));
     const side = $("side");
     if (S.tab === "seq") {
-      side.innerHTML = S.activities.length ? `<ul class="seq">${S.activities.map(a => `<li class="${a.status}${a.id === S.focus ? " focus" : ""}"><span class="kind">${KIND[a.kind]}</span><div class="row"><strong>${esc(a.title)}</strong>${a.status === "open" ? `<span class="tag live">Abierta</span>` : a.status === "closed" ? `<span class="tag closed">Cerrada</span>` : ""}<button class="button secondary small" data-focus="${a.id}">Ver</button>${a.status !== "open" ? `<button class="button teal small" data-open="${a.id}">Abrir</button>` : ""}</div></li>`).join("")}</ul>` : `<p class="subtle">Aún no hay actividades. Añádelas desde «Nueva actividad».</p>`;
+      side.innerHTML = S.activities.length ? `<ul class="seq">${S.activities.map(a => `<li class="${a.status}${a.id === S.focus ? " focus" : ""}"><span class="kind">${a.content?.auto ? "Lección" : KIND[a.kind]}</span><div class="row"><strong>${esc(a.title)}</strong>${a.status === "open" ? `<span class="tag live">Abierta</span>` : a.status === "closed" ? `<span class="tag closed">Cerrada</span>` : ""}<button class="button secondary small" data-focus="${a.id}">Ver</button>${a.status !== "open" ? `<button class="button teal small" data-open="${a.id}">Abrir</button>` : ""}</div></li>`).join("")}</ul>` : `<p class="subtle">Aún no hay actividades. Añádelas desde «Nueva actividad».</p>`;
       side.querySelectorAll("[data-focus]").forEach(b => b.addEventListener("click", async () => { S.focus = b.dataset.focus; await loadResults(S.focus); renderMain(); renderSide(); }));
       side.querySelectorAll("[data-open]").forEach(b => b.addEventListener("click", () => activityAction(S.activities.find(a => a.id === b.dataset.open), "open")));
     }
@@ -387,8 +459,9 @@
     root.querySelectorAll("[data-project]").forEach(b => b.addEventListener("click", async () => {
       const id = b.dataset.project, on = S.session.projected_material_id !== id;
       await sb.from("materials").update({ visible: true }).eq("id", id).eq("visible", false);
-      await sb.from("sessions").update({ projected_material_id: on ? id : null }).eq("id", sessionId);
+      await sb.from("sessions").update({ projected_material_id: on ? id : null, projected_state: {} }).eq("id", sessionId);
       log(on ? "material_projected" : "material_unprojected", { material_id: id });
+      if (on) await ensureLessonActivity(S.materials.find(m => m.id === id));
     }));
     root.querySelectorAll("[data-toggle]").forEach(b => b.addEventListener("click", async () => { await sb.from("materials").update({ visible: b.dataset.visible !== "true" }).eq("id", b.dataset.toggle); }));
     root.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", async () => { if (confirm("¿Borrar este material?")) await sb.from("materials").delete().eq("id", b.dataset.del); }));
@@ -429,11 +502,11 @@
       const st = presence.presenceState(); S.presence = {};
       Object.entries(st).forEach(([k, v]) => { if (v[0]) S.presence[k] = v[0]; });
       renderTop(); if (S.teacher && S.tab === "people") renderSide();
-    }).subscribe(async status => { if (status === "SUBSCRIBED") await presence.track({ id: me.user.id, name: me.profile.full_name, roleLabel: Campus.ROLE_LABEL[me.profile.role] }); });
+    }).subscribe(async status => { if (status === "SUBSCRIBED") await presence.track({ id: me.user.id, name: me.profile.full_name, roleLabel: me.user.is_anonymous ? "Invitado/a" : Campus.ROLE_LABEL[me.profile.role] }); });
 
     const f = "session_id=eq." + sessionId;
     sb.channel("db:" + sessionId)
-      .on("postgres_changes", { event: "*", schema: "public", table: "sessions", filter: "id=eq." + sessionId }, async () => { await loadSession(); render(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "sessions", filter: "id=eq." + sessionId }, async () => { await loadSession(); render(); gotoTeacherSection(false); })
       .on("postgres_changes", { event: "*", schema: "public", table: "activities", filter: f }, async () => { await loadActivities(); await loadMyResponses(); await loadResults(S.focus); render(); })
       .on("postgres_changes", { event: "*", schema: "public", table: "materials", filter: f }, async () => { await loadMaterials(); renderMain(); renderSide(); })
       .on("postgres_changes", { event: "*", schema: "public", table: "help_requests", filter: f }, async () => { await loadHelp(); render(); })
