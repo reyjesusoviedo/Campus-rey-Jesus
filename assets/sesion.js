@@ -11,7 +11,7 @@
     team_challenge: "Reto en equipo", submission: "Entrega (texto o foto)", exit_ticket: "Ticket de salida"
   };
 
-  const S = { session: null, group: null, teacher: false, activities: [], materials: [], questions: [], votes: [], help: [], myResponses: {}, presence: {}, focus: null, tab: null, results: {}, members: [] };
+  const S = { lessonCache: {}, stageFrame: null, session: null, group: null, teacher: false, activities: [], materials: [], questions: [], votes: [], help: [], myResponses: {}, presence: {}, focus: null, tab: null, results: {}, members: [] };
   const $ = id => document.getElementById(id);
   const dialog = $("dialog");
   $("dialog-close").addEventListener("click", () => dialog.close());
@@ -111,6 +111,53 @@
     if (act === "reopen") { await sb.from("sessions").update({ status: "live" }).eq("id", sessionId); toast("Clase reabierta"); }
   }
 
+
+  // ---- material proyectado (lección incrustada) ----
+  function projectedMaterial() {
+    const id = S.session.projected_material_id; if (!id) return null;
+    const m = S.materials.find(x => x.id === id); return m && (m.visible || S.teacher) ? m : null;
+  }
+  async function mountStage(container, m) {
+    if (S.stageFrame && S.stageFrame.dataset.material === m.id) { container.appendChild(S.stageFrame); return; }
+    if (m.kind === "text") { container.innerHTML = `<div class="material-text stage-text">${esc(m.content)}</div>`; return; }
+    const frame = document.createElement("iframe"); frame.className = "stage-frame"; frame.dataset.material = m.id; frame.title = m.title;
+    container.appendChild(frame); S.stageFrame = frame;
+    if (m.kind === "link") { frame.src = m.url; return; }
+    if (/\.html?$/i.test(m.storage_path || "")) {
+      frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups allow-modals");
+      if (!S.lessonCache[m.id]) { const { data, error } = await sb.storage.from("materials").download(m.storage_path); if (error) { container.innerHTML = `<p class="notice">No se pudo cargar la lección.</p>`; return; } S.lessonCache[m.id] = await data.text(); }
+      frame.srcdoc = S.lessonCache[m.id]; return;
+    }
+    const { data, error } = await sb.storage.from("materials").createSignedUrl(m.storage_path, 3600);
+    if (error) { container.innerHTML = `<p class="notice">No se pudo cargar el archivo.</p>`; return; }
+    frame.src = data.signedUrl;
+  }
+  function stageHtml(m) {
+    return `<div class="stage-head"><span class="eyebrow">En pantalla</span><strong>${esc(m.title)}</strong>
+      ${S.teacher ? `<button class="button secondary small" data-project="${m.id}">Quitar de pantalla</button>` : `<a class="button secondary small" href="#" data-file="${esc(m.storage_path || "")}" data-bucket="materials" ${m.storage_path ? "" : "hidden"}>Abrir aparte</a>`}
+      <button class="button secondary small" data-stage-full>Pantalla completa</button></div><div class="stage" id="stage"></div>`;
+  }
+  // Mantiene el iframe montado entre renders (moverlo o recrearlo recargaría la lección)
+  function ensureStage(main, pm, cardHtml, renderAct) {
+    const stage = main.querySelector("#stage");
+    if (!stage || stage.dataset.material !== pm.id) {
+      S.stageFrame = null;
+      main.innerHTML = `<div id="act-area"></div>` + stageHtml(pm) + (S.teacher ? "" : pipHint());
+      main.querySelector("#stage").dataset.material = pm.id;
+      bindStage(main, pm);
+    }
+    const area = main.querySelector("#act-area");
+    const prev = area.querySelector("details"), prevId = prev?.dataset.act, wasOpen = prev ? prev.open : null;
+    area.innerHTML = cardHtml;
+    const d = area.querySelector("details");
+    if (d) { d.dataset.act = cardHtml.match(/#act-slot/) ? (S.teacher ? S.focus : S.activities.find(a => a.status === "open")?.id) : ""; if (prevId === d.dataset.act && wasOpen !== null) d.open = wasOpen; }
+    if (renderAct && d) renderAct(area.querySelector("#act-slot"));
+  }
+  function bindStage(root, m) {
+    root.querySelector("[data-stage-full]")?.addEventListener("click", () => { const el = root.querySelector("#stage"); (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el); });
+    bindMaterials(root); mountStage(root.querySelector("#stage"), m);
+  }
+
   // ---- panel principal ----
   function renderMain() {
     const main = $("main");
@@ -123,6 +170,11 @@
       main.innerHTML = `<div class="live-activity-head"><div><p class="eyebrow">Después de la clase</p><h2 style="margin:0">Actividades de esta clase</h2></div></div>
         ${done.length ? `<ul class="seq" style="margin-top:18px">${done.map(a => `<li><span class="kind">${KIND[a.kind]}</span><div class="row"><strong>${esc(a.title)}</strong>${S.myResponses[a.id] ? `<span class="tag">Respondida</span>` : ""}<button class="button secondary small" data-focus="${a.id}">${S.myResponses[a.id] ? "Ver" : "Hacer"}</button></div></li>`).join("")}</ul>` : `<p class="subtle">Esta clase no tuvo actividades.</p>`}`;
       main.querySelectorAll("[data-focus]").forEach(b => b.addEventListener("click", async () => { S.focus = b.dataset.focus; await loadResults(S.focus); renderMain(); }));
+      return;
+    }
+    const pm = projectedMaterial();
+    if (pm) {
+      ensureStage(main, pm, open ? `<details class="activity-card" open><summary><span class="tag live">Actividad abierta</span> ${esc(open.title)}</summary><div id="act-slot"></div></details>` : "", open ? slot => renderStudentActivity(slot, open, false) : null);
       return;
     }
     if (open) return renderStudentActivity(main, open, false);
@@ -186,11 +238,20 @@
 
   // ---- panel principal del maestro ----
   function renderTeacherMain(main) {
+    const pm = projectedMaterial();
+    if (pm) {
+      const a = S.activities.find(x => x.id === S.focus);
+      ensureStage(main, pm, a ? `<details class="activity-card" ${a.status === "open" ? "open" : ""}><summary>${a.status === "open" ? `<span class="tag live">Abierta</span>` : `<span class="tag">Actividad</span>`} ${esc(a.title)}</summary><div id="act-slot"></div></details>` : "", a ? slot => renderTeacherActivity(slot, a) : null);
+      return;
+    }
     const a = S.activities.find(x => x.id === S.focus);
     if (!a) {
       main.innerHTML = `<div class="live-wait"><h2>Prepara la secuencia</h2><p>Añade lecturas, preguntas, pizarra o entregas. Cuando empiece la clase, ábrelas una a una y verás las respuestas en directo.</p></div>${editorHtml()}`;
       bindEditor(main); return;
     }
+    renderTeacherActivity(main, a);
+  }
+  function renderTeacherActivity(main, a) {
     const c = a.content || {}, res = S.results[a.id];
     main.innerHTML = `<div class="live-activity-head"><div><p class="eyebrow">${KIND[a.kind]} · ${a.status === "open" ? "abierta" : a.status === "closed" ? "cerrada" : "sin abrir"}</p><h2 style="margin:0">${esc(a.title)}</h2></div><div class="live-controls" style="margin:0">
         ${a.status !== "open" ? `<button class="button teal small" data-a="open">${a.status === "closed" ? "Reabrir" : "Abrir a los alumnos"}</button>` : `<button class="button small" data-a="close">Cerrar</button>`}
@@ -310,16 +371,25 @@
       side.querySelectorAll("[data-answered]").forEach(b => b.addEventListener("click", async () => { await sb.from("questions").update({ status: "answered" }).eq("id", b.dataset.answered); }));
     }
   }
+  function pipHint() {
+    return `<p class="meta pip-hint">Para ver al maestro mientras trabajas: en Meet o Zoom pulsa «ventana flotante» (picture-in-picture) y su cámara quedará encima del campus.</p>`;
+  }
   const votes = id => S.votes.filter(v => v.question_id === id).length;
 
   function materialsHtml(list, manage) {
     return `<ul class="materials-list">${list.map(m => `<li class="${m.visible ? "" : "hidden-m"}"><div class="row"><strong>${esc(m.title)}</strong>
       ${m.kind === "link" ? `<a class="button secondary small" target="_blank" rel="noopener" href="${esc(m.url)}">Abrir</a>` : ""}
       ${m.kind === "file" ? `<a class="button secondary small" href="#" data-file="${esc(m.storage_path)}" data-bucket="materials">Abrir</a>` : ""}
-      ${manage ? `<button class="button secondary small" data-toggle="${m.id}" data-visible="${m.visible}">${m.visible ? "Ocultar" : "Mostrar"}</button><button class="button secondary small" data-del="${m.id}">Borrar</button>` : ""}</div>
+      ${manage ? `<button class="button ${S.session.projected_material_id === m.id ? "" : "teal"} small" data-project="${m.id}">${S.session.projected_material_id === m.id ? "Quitar" : "Proyectar"}</button><button class="button secondary small" data-toggle="${m.id}" data-visible="${m.visible}">${m.visible ? "Ocultar" : "Mostrar"}</button><button class="button secondary small" data-del="${m.id}">Borrar</button>` : ""}</div>
       ${m.kind === "text" ? `<div class="material-text">${esc(m.content)}</div>` : ""}</li>`).join("")}</ul>`;
   }
   function bindMaterials(root) {
+    root.querySelectorAll("[data-project]").forEach(b => b.addEventListener("click", async () => {
+      const id = b.dataset.project, on = S.session.projected_material_id !== id;
+      await sb.from("materials").update({ visible: true }).eq("id", id).eq("visible", false);
+      await sb.from("sessions").update({ projected_material_id: on ? id : null }).eq("id", sessionId);
+      log(on ? "material_projected" : "material_unprojected", { material_id: id });
+    }));
     root.querySelectorAll("[data-toggle]").forEach(b => b.addEventListener("click", async () => { await sb.from("materials").update({ visible: b.dataset.visible !== "true" }).eq("id", b.dataset.toggle); }));
     root.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", async () => { if (confirm("¿Borrar este material?")) await sb.from("materials").delete().eq("id", b.dataset.del); }));
     bindFiles(root);

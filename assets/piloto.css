@@ -108,3 +108,17 @@ details.editor summary { cursor: pointer; font-weight: 750; }
   .session-top h1 { font-size: 1.5rem; }
   .inline-form .row { grid-template-columns: 1fr; }
 }
+
+/* Material proyectado */
+.stage-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
+.stage-head strong { flex: 1; font-family: Georgia, serif; font-size: 1.15rem; }
+.stage { min-height: 60vh; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: white; }
+.stage-frame { width: 100%; height: 72vh; border: 0; display: block; background: white; }
+.stage:fullscreen .stage-frame { height: 100vh; }
+.stage-text { min-height: 0; margin: 0; }
+.activity-card { margin-bottom: 14px; border: 1px solid var(--teal-dark); border-radius: 12px; padding: 10px 14px; background: #f3fbf9; }
+.activity-card summary { cursor: pointer; font-weight: 750; display: flex; align-items: center; gap: 8px; }
+.activity-card > div { padding-top: 10px; }
+.pip-hint { margin: 12px 0 0; }
+.live-class .live-activity:has(.stage) { padding: 18px; }
+@media (max-width: 900px) { .stage-frame { height: 70vh; } }
