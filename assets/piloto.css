@@ -122,3 +122,14 @@ details.editor summary { cursor: pointer; font-weight: 750; }
 .pip-hint { margin: 12px 0 0; }
 .live-class .live-activity:has(.stage) { padding: 18px; }
 @media (max-width: 900px) { .stage-frame { height: 70vh; } }
+
+/* Menú móvil */
+.nav-overlay { display: none; position: fixed; inset: 0; background: rgba(16,24,39,.45); z-index: 25; }
+.nav-close { display: none; position: absolute; top: 12px; right: 12px; z-index: 31; }
+.rt-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #d9a441; vertical-align: middle; margin-left: 4px; }
+.rt-dot[data-on="true"] { background: var(--teal); }
+@media (max-width: 900px) {
+  .sidebar { position: fixed; top: 0; left: 0; bottom: 0; z-index: 30; width: min(280px, 85vw); overflow: auto; }
+  body.nav-open .nav-overlay { display: block; }
+  body.nav-open .nav-close { display: inline-grid; place-items: center; }
+}

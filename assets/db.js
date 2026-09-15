@@ -66,7 +66,15 @@
     });
     document.querySelectorAll(".nav-link").forEach(a => { const on = a.dataset.nav === active; a.classList.toggle("active", on); if (on) a.setAttribute("aria-current", "page"); });
     const menu = document.querySelector("[data-menu]");
-    if (menu) menu.addEventListener("click", () => document.body.classList.toggle("nav-open"));
+    if (menu) {
+      let ov = document.getElementById("nav-overlay");
+      if (!ov) { ov = document.createElement("div"); ov.id = "nav-overlay"; ov.className = "nav-overlay"; document.body.appendChild(ov); }
+      const side = document.querySelector(".sidebar");
+      if (side && !side.querySelector(".nav-close")) { const x = document.createElement("button"); x.className = "icon-button nav-close"; x.setAttribute("aria-label", "Cerrar menú"); x.textContent = "×"; side.prepend(x); x.addEventListener("click", () => document.body.classList.remove("nav-open")); }
+      menu.addEventListener("click", () => document.body.classList.toggle("nav-open"));
+      ov.addEventListener("click", () => document.body.classList.remove("nav-open"));
+      document.querySelectorAll(".nav-link").forEach(a => a.addEventListener("click", () => document.body.classList.remove("nav-open")));
+    }
   }
 
   function isStaff(me, group) {
