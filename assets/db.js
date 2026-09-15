@@ -45,8 +45,16 @@
     if (brand) brand.innerHTML = `<span class="brand-mark">${esc(cfg.brandShort)}</span><span>${esc(cfg.brand)}<small>${esc(cfg.tagline)}</small></span>`;
     const foot = document.querySelector("[data-profile]");
     if (foot) foot.innerHTML = `<div class="profile-mini"><span class="avatar teal">${esc(initials(me.profile.full_name))}</span><div><strong>${esc(me.profile.full_name)}</strong><span>${ROLE_LABEL[me.profile.role] || ""}</span></div></div>
-      <button class="button secondary small" style="margin-top:12px;width:100%" data-logout>Salir</button>`;
+      <button class="button secondary small" style="margin-top:12px;width:100%" data-rename>Cambiar mi nombre</button>
+      <button class="button secondary small" style="margin-top:8px;width:100%" data-logout>Salir</button>`;
     document.querySelector("[data-logout]")?.addEventListener("click", async () => { await sb.auth.signOut(); location.replace("index.html"); });
+    document.querySelector("[data-rename]")?.addEventListener("click", async () => {
+      const name = prompt("Tu nombre y apellido:", me.profile.full_name);
+      if (!name || !name.trim()) return;
+      const { error } = await sb.from("profiles").update({ full_name: name.trim() }).eq("id", me.user.id);
+      if (error) { toast("No se pudo guardar el nombre"); return; }
+      me.profile.full_name = name.trim(); toast("Nombre guardado"); location.reload();
+    });
     document.querySelectorAll(".nav-link").forEach(a => { const on = a.dataset.nav === active; a.classList.toggle("active", on); if (on) a.setAttribute("aria-current", "page"); });
     const menu = document.querySelector("[data-menu]");
     if (menu) menu.addEventListener("click", () => document.body.classList.toggle("nav-open"));
