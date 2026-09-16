@@ -39,7 +39,7 @@
     S.activities = data || [];
     const open = S.activities.find(a => a.status === "open");
     if (!S.teacher) S.focus = open ? open.id : (S.session.status === "closed" ? S.focus : null);
-    else if (!S.focus || !S.activities.some(a => a.id === S.focus)) S.focus = open ? open.id : (S.activities[0]?.id || null);
+    else { const q = S.activities.find(a => a.status === "open" && a.content?.quick); if (q && S.focus !== q.id && !S.focusPinned) S.focus = q.id; else if (!S.focus || !S.activities.some(a => a.id === S.focus)) S.focus = open ? open.id : (S.activities[0]?.id || null); }
   }
   async function loadMaterials() { const { data, error } = await sb.from("materials").select("*").eq("session_id", sessionId).order("position").order("created_at"); if (error) { loadError("el material", error); return; } S.materials = data || []; }
   const nameCache = {};
@@ -82,17 +82,17 @@
   function signature() {
     const s = S.session; return JSON.stringify([s.status, s.projected_material_id, s.projected_state, s.recording_url, s.allow_guests, s.public_view,
       S.activities.map(a => [a.id, a.status, a.results_shared, a.title, a.closes_at, a.content]), S.materials.map(m => [m.id, m.visible, m.title]),
-      S.questions.map(q => [q.id, q.status]), S.votes.length, S.help.map(h => h.id), Object.keys(S.myResponses), S.results[S.focus]?.total, S.results[S.focus]?.allowed]);
+      S.questions.map(q => [q.id, q.status]), S.votes.length, Object.keys(S.presence).length, S.help.map(h => h.id), Object.keys(S.myResponses), S.results[S.focus]?.total, S.results[S.focus]?.allowed]);
   }
   function captureForm() {
     const main = $("main"); const f = { text: main.querySelector("#ans-text")?.value, num: main.querySelector("#ans-num")?.value, opts: [...main.querySelectorAll("[name=opt]:checked")].map(i => i.value), q: main.querySelector("#q-text")?.value };
-    const side = $("side"); f.qside = side.querySelector("#q-text")?.value; f.edTitle = main.querySelector("#ed-title")?.value; f.edPrompt = main.querySelector("#ed-prompt")?.value; f.edOpts = main.querySelector("#ed-opts")?.value; f.edText = main.querySelector("#ed-text")?.value; f.edOpen = main.querySelector("details.editor")?.open;
+    const side = $("side"); f.qside = side.querySelector("#q-text")?.value; f.bar = $("bar-text")?.value; f.edTitle = main.querySelector("#ed-title")?.value; f.edPrompt = main.querySelector("#ed-prompt")?.value; f.edOpts = main.querySelector("#ed-opts")?.value; f.edText = main.querySelector("#ed-text")?.value; f.edOpen = main.querySelector("details.editor")?.open;
     return f;
   }
   function restoreForm(f) {
     const main = $("main"), side = $("side");
     const set = (el, v) => { if (el && v !== undefined && v !== null && v !== "" && !el.value) el.value = v; };
-    set(main.querySelector("#ans-text"), f.text); set(main.querySelector("#ans-num"), f.num); set(side.querySelector("#q-text"), f.qside);
+    set(main.querySelector("#ans-text"), f.text); set(main.querySelector("#ans-num"), f.num); set(side.querySelector("#q-text"), f.qside); if ($("bar-text") && f.bar) $("bar-text").value = f.bar;
     if (f.opts?.length && !main.querySelector("[name=opt]:checked")) f.opts.forEach(v => { const i = main.querySelector(`[name=opt][value="${v}"]`); if (i) i.checked = true; });
     set(main.querySelector("#ed-title"), f.edTitle); set(main.querySelector("#ed-prompt"), f.edPrompt); set(main.querySelector("#ed-opts"), f.edOpts); set(main.querySelector("#ed-text"), f.edText);
     if (f.edOpen && main.querySelector("details.editor")) main.querySelector("details.editor").open = true;
@@ -111,7 +111,7 @@
 
   // ---------- render ----------
   function render() {
-    renderTop(); renderMain(); renderSide();
+    renderTop(); renderMain(); renderSide(); updateBar();
     $("help-btn").hidden = S.teacher || S.session.status !== "live";
     const mine = S.help.find(h => h.user_id === me.user.id);
     $("help-btn").setAttribute("aria-pressed", String(!!mine));
@@ -134,6 +134,7 @@
         ${zoom ? `<a class="button gold" target="_blank" rel="noopener" href="${esc(zoom)}">Abrir Zoom</a>` : ""}
         ${S.teacher && s.status !== "closed" ? `<button class="button secondary" data-act="invite">Invitar a esta clase</button>` : ""}
         ${S.teacher && s.status === "scheduled" ? `<button class="button teal" data-act="start">Iniciar la clase</button>` : ""}
+        ${S.teacher && s.status === "live" ? (openQuick() ? `<button class="button quick-open" data-act="quick-close">Cerrar pregunta · ${(S.results[openQuick().id]?.total ?? 0)} respuestas</button>` : `<button class="button teal" data-act="quick">Pregunta</button>`) : ""}
         ${S.teacher && s.status === "live" ? `<button class="button danger" data-act="end">Finalizar la clase</button>` : ""}
         ${S.teacher && s.status === "closed" ? `<button class="button secondary" data-act="recording">${s.recording_url ? "Cambiar grabación" : "Añadir grabación"}</button><button class="button secondary" data-act="reopen">Reabrir</button>` : ""}
       </div>`;
@@ -163,6 +164,8 @@
       return;
     }
     if (act === "invite") { inviteDialog(); return; }
+    if (act === "quick") { quickDialog(); return; }
+    if (act === "quick-close") { const q = openQuick(); if (q) { await sb.from("activities").update({ status: "closed" }).eq("id", q.id); log("activity_closed", { activity_id: q.id }); toast("Pregunta cerrada"); refreshAll(true); } return; }
     if (act === "reopen") { await sb.from("sessions").update({ status: "live" }).eq("id", sessionId); toast("Clase reabierta"); refreshAll(true); }
   }
 
@@ -283,6 +286,35 @@
     });
   }
 
+
+  // ---- turno rápido: el maestro pregunta en voz alta, los alumnos escriben ----
+  async function quickDialog() {
+    const n = S.activities.filter(isQuick).length + 1, hora = new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+    openDialog("Abrir turno de respuesta", `
+      <p class="subtle" style="margin-top:0">Lanza la pregunta en voz alta. Los alumnos verán una caja para responder; las respuestas llegan aquí en directo.</p>
+      <div class="field"><label for="qk-title">Título (opcional, tres palabras bastan)</label><input id="qk-title" placeholder="Pregunta ${n} · ${hora}"></div>
+      <button class="button" id="qk-go" style="width:100%">Abrir a los alumnos</button>`, d => {
+      const go = async () => {
+        const title = d.querySelector("#qk-title").value.trim() || `Pregunta ${n} · ${hora}`;
+        const prev = openQuick(); if (prev) await sb.from("activities").update({ status: "closed" }).eq("id", prev.id);
+        const { data, error } = await sb.from("activities").insert({ session_id: sessionId, kind: "open", title, status: "open", opened_at: new Date().toISOString(), position: S.activities.length, content: { quick: true, prompt: "" } }).select().single();
+        if (error) { toast("No se pudo abrir: " + error.message); return; }
+        S.focus = data.id; log("activity_opened", { activity_id: data.id, quick: true }); dialog.close(); toast("Turno abierto"); refreshAll(true);
+      };
+      d.querySelector("#qk-go").addEventListener("click", go);
+      d.querySelector("#qk-title").addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+      setTimeout(() => d.querySelector("#qk-title").focus(), 50);
+    });
+  }
+  function bubblesHtml(a, res) {
+    const items = res?.items || [];
+    const present = Object.values(S.presence).filter(p => p.id !== me.user.id && p.roleLabel !== "Maestro/a" && p.roleLabel !== "Coordinación").length;
+    const answered = new Set(items.map(i => i.user_id)).size;
+    return `<div class="turn-head"><h2>${esc(a.title)}</h2><span class="turn-counter">${answered} de ${Math.max(present, answered)} han respondido</span></div>
+      ${a.content?.prompt ? `<p class="live-prompt">${esc(a.content.prompt)}</p>` : ""}
+      <div class="bubbles">${items.length ? items.map(i => `<div class="bubble"><span class="who">${esc(i.name || "Alumno/a")}${i.guest ? " · invitado" : ""}${i.deferred ? " · diferido" : ""}</span><p>${esc(i.content.text || "")}</p>${i.content.storage_path ? `<a class="live-link" data-file="${esc(i.content.storage_path)}" href="#">Ver archivo</a>` : ""}</div>`).join("") : `<p class="meta">Esperando respuestas…</p>`}</div>`;
+  }
+
   // ---- panel principal ----
   function renderMain() {
     const main = $("main");
@@ -311,6 +343,12 @@
 
   function renderStudentActivity(main, a, deferred) {
     const c = a.content || {}, r = S.myResponses[a.id], rc = r?.content || {};
+    if (isQuick(a) && !deferred) {
+      main.innerHTML = `<div class="q-inline"><p class="eyebrow">El maestro ha lanzado una pregunta</p><strong>${esc(a.title)}</strong><p class="meta" style="margin:6px 0 0">${r ? "Tu respuesta está enviada. Puedes completarla desde la caja de abajo." : "Escucha la pregunta y responde en la caja de abajo."}</p></div>
+        ${r ? `<div class="bubble" style="max-width:600px"><span class="who">Tu respuesta</span><p>${esc(rc.text || "")}</p></div>` : ""}
+        ${S.results[a.id]?.allowed ? `<h3>Respuestas del grupo</h3>${resultsHtml(a, S.results[a.id])}` : ""}`;
+      return;
+    }
     const editable = a.status === "open" || (deferred && !r);
     const res = S.results[a.id];
     let form = "";
@@ -357,6 +395,7 @@
       return `<p class="meta">${res.total} ${res.total === 1 ? "respuesta" : "respuestas"}</p>` + (c.options || []).map((o, i) => `<div class="result-bar"><span>${esc(o)}${S.teacher && (c.correct || []).includes(i) ? " ✓" : ""}</span><strong>${counts[i]}</strong><div class="track"><div class="fill" style="width:${counts[i] / max * 100}%"></div></div></div>`).join("");
     }
     if (a.kind === "numeric") { const vals = items.map(i => i.content.value).filter(v => typeof v === "number"); const avg = vals.length ? (vals.reduce((x, y) => x + y, 0) / vals.length).toFixed(2) : "—"; return `<p class="meta">${vals.length} respuestas · media ${avg}</p>${S.teacher ? `<table class="responses-table">${items.map(i => `<tr><td>${esc(i.name || "Alumno/a")}</td><td>${esc(i.content.value)}</td></tr>`).join("")}</table>` : ""}`; }
+    if (S.teacher && textKinds.includes(a.kind)) return bubblesHtml(a, res);
     if (a.kind === "board" || (!S.teacher && a.results_shared)) return `<div class="live-board">${items.map(i => `<div class="live-note">${esc(i.content.text || "")}${S.teacher && i.name ? `<br><small class="meta">${esc(i.name)}</small>` : ""}</div>`).join("") || `<p class="meta">Sin aportaciones todavía.</p>`}</div>`;
     return `<table class="responses-table">${items.map(i => `<tr><td>${esc(i.name || "Alumno/a")}${i.guest ? ` <span class="tag">invitado</span>` : ""}${i.deferred ? ` <span class="tag closed">diferido</span>` : ""}</td><td>${esc(i.content.text || "")}${i.content.storage_path ? `<a class="live-link" data-file="${esc(i.content.storage_path)}" href="#">Ver archivo</a>` : ""}</td></tr>`).join("") || `<tr><td colspan="2" class="meta">Sin respuestas todavía.</td></tr>`}</table>`;
   }
@@ -378,6 +417,15 @@
   }
   function renderTeacherActivity(main, a) {
     const c = a.content || {}, res = S.results[a.id];
+    if (isQuick(a)) {
+      main.innerHTML = `<div class="live-activity-head"><div><p class="eyebrow">Pregunta en voz alta · ${a.status === "open" ? "abierta" : "cerrada"}</p></div><div class="live-controls" style="margin:0">
+          ${a.status === "open" ? `<button class="button small" data-a="close">Cerrar</button>` : `<button class="button teal small" data-a="open">Reabrir</button>`}
+          <button class="button secondary small" data-a="share" aria-pressed="${a.results_shared}">${a.results_shared ? "Visible para el grupo" : "Compartir con el grupo"}</button>
+          <button class="button secondary small" data-a="delete">Borrar</button></div></div>
+        ${bubblesHtml(a, res)}`;
+      main.querySelectorAll("[data-a]").forEach(b => b.addEventListener("click", () => activityAction(a, b.dataset.a)));
+      bindFiles(main); return;
+    }
     main.innerHTML = `<div class="live-activity-head"><div><p class="eyebrow">${KIND[a.kind]} · ${a.status === "open" ? "abierta" : a.status === "closed" ? "cerrada" : "sin abrir"}</p><h2 style="margin:0">${esc(a.title)}</h2></div><div class="live-controls" style="margin:0">
         ${a.status !== "open" ? `<button class="button teal small" data-a="open">${a.status === "closed" ? "Reabrir" : "Abrir a los alumnos"}</button>` : `<button class="button small" data-a="close">Cerrar</button>`}
         <button class="button secondary small" data-a="share" aria-pressed="${a.results_shared}">${a.results_shared ? "Resultados visibles" : "Mostrar resultados"}</button>
@@ -453,8 +501,8 @@
     $("tabs").querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => { S.tab = b.dataset.tab; renderSide(); }));
     const side = $("side");
     if (S.tab === "seq") {
-      side.innerHTML = S.activities.length ? `<ul class="seq">${S.activities.map(a => `<li class="${a.status}${a.id === S.focus ? " focus" : ""}"><span class="kind">${a.content?.auto ? "Lección" : KIND[a.kind]}</span><div class="row"><strong>${esc(a.title)}</strong>${a.status === "open" ? `<span class="tag live">Abierta</span>` : a.status === "closed" ? `<span class="tag closed">Cerrada</span>` : ""}<button class="button secondary small" data-focus="${a.id}">Ver</button>${a.status !== "open" ? `<button class="button teal small" data-open="${a.id}">Abrir</button>` : ""}</div></li>`).join("")}</ul>` : `<p class="subtle">Aún no hay actividades. Añádelas desde «Nueva actividad».</p>`;
-      side.querySelectorAll("[data-focus]").forEach(b => b.addEventListener("click", async () => { S.focus = b.dataset.focus; await loadResults(S.focus); renderMain(); renderSide(); }));
+      side.innerHTML = S.activities.length ? `<ul class="seq">${S.activities.map(a => `<li class="${a.status}${a.id === S.focus ? " focus" : ""}"><span class="kind">${a.content?.auto ? "Lección" : isQuick(a) ? "Pregunta en voz alta" : KIND[a.kind]}</span><div class="row"><strong>${esc(a.title)}</strong>${a.status === "open" ? `<span class="tag live">Abierta</span>` : a.status === "closed" ? `<span class="tag closed">Cerrada</span>` : ""}<button class="button secondary small" data-focus="${a.id}">Ver</button>${a.status !== "open" ? `<button class="button teal small" data-open="${a.id}">Abrir</button>` : ""}</div></li>`).join("")}</ul>` : `<p class="subtle">Aún no hay actividades. Añádelas desde «Nueva actividad».</p>`;
+      side.querySelectorAll("[data-focus]").forEach(b => b.addEventListener("click", async () => { S.focus = b.dataset.focus; S.focusPinned = true; setTimeout(() => S.focusPinned = false, 60000); await loadResults(S.focus); renderMain(); renderSide(); }));
       side.querySelectorAll("[data-open]").forEach(b => b.addEventListener("click", () => activityAction(S.activities.find(a => a.id === b.dataset.open), "open")));
     }
     if (S.tab === "people") {
@@ -500,6 +548,10 @@
   function pipHint() {
     return `<p class="meta pip-hint">Para ver al maestro mientras trabajas: en Meet o Zoom pulsa «ventana flotante» (picture-in-picture) y su cámara quedará encima del campus.</p>`;
   }
+  const isQuick = a => !!a?.content?.quick;
+  const openQuick = () => S.activities.find(a => a.status === "open" && isQuick(a));
+  const textKinds = ["open", "board", "exit_ticket", "team_challenge", "submission"];
+  const openText = () => S.activities.find(a => a.status === "open" && !a.content?.auto && textKinds.includes(a.kind));
   const votes = id => S.votes.filter(v => v.question_id === id).length;
 
   function materialsHtml(list, manage) {
@@ -542,6 +594,42 @@
       window.open(data.signedUrl, "_blank");
     }));
   }
+
+
+  // ---- barra de respuesta del alumno ----
+  function updateBar() {
+    const bar = $("reply-bar"); if (!bar) return;
+    const show = !S.teacher && S.session.status !== "scheduled";
+    bar.hidden = !show; document.body.classList.toggle("has-bar", show);
+    if (!show) return;
+    const t = openText(), label = $("bar-label"), ta = $("bar-text");
+    const mine = t && S.myResponses[t.id];
+    if (t) { label.textContent = (isQuick(t) ? "Responde: " : "Actividad: ") + t.title; label.className = "reply-label"; ta.placeholder = mine ? "Puedes completar tu respuesta…" : "Escribe tu respuesta…"; if (mine && !ta.value && ta !== document.activeElement) ta.value = mine.content?.text || ""; }
+    else { label.textContent = S.session.status === "closed" ? "Comentario o duda" : "Duda o comentario para el maestro"; label.className = "reply-label duda"; ta.placeholder = "Escribe una duda o comentario…"; }
+    const h = S.help.find(x => x.user_id === me.user.id); $("bar-help").setAttribute("aria-pressed", String(!!h)); $("bar-help").title = h ? "Retirar aviso de ayuda" : "Pido ayuda";
+    $("bar-send").textContent = mine && t ? "Actualizar" : "Enviar";
+  }
+  async function barSend() {
+    const ta = $("bar-text"), text = ta.value.trim(); if (!text) return;
+    const t = openText(), st = $("bar-status"); $("bar-send").disabled = true;
+    try {
+      if (t) {
+        const existing = S.myResponses[t.id]; const content = { ...(existing?.content || {}), text };
+        const { error } = existing ? await sb.from("responses").update({ content }).eq("id", existing.id) : await sb.from("responses").insert({ activity_id: t.id, user_id: me.user.id, content, is_deferred: S.session.status === "closed" });
+        if (error) { toast("No se pudo enviar: " + error.message); return; }
+        log("response", { activity_id: t.id }); st.textContent = "Enviada ✓ · puedes completarla mientras siga abierta"; st.hidden = false;
+      } else {
+        const { error } = await sb.from("questions").insert({ session_id: sessionId, user_id: me.user.id, text });
+        if (error) { toast("No se pudo enviar: " + error.message); return; }
+        log("question", { text }); ta.value = ""; st.textContent = "Duda enviada ✓ · el maestro la verá en su lista"; st.hidden = false;
+      }
+      setTimeout(() => st.hidden = true, 4000); refreshAll(true);
+    } finally { $("bar-send").disabled = false; }
+  }
+  $("bar-send")?.addEventListener("click", barSend);
+  $("bar-text")?.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && window.innerWidth > 900) { e.preventDefault(); barSend(); } });
+  $("bar-text")?.addEventListener("input", e => { e.target.style.height = "auto"; e.target.style.height = Math.min(120, e.target.scrollHeight) + "px"; });
+  $("bar-help")?.addEventListener("click", () => $("help-btn").click());
 
   // ---- ayuda ----
   $("help-btn").addEventListener("click", async () => {
