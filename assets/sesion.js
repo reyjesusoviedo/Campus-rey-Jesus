@@ -197,7 +197,7 @@
     if (/\.html?$/i.test(m.storage_path || "")) {
       frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups allow-modals");
       if (!S.lessonCache[m.id]) { const { data, error } = await sb.storage.from("materials").download(m.storage_path); if (error) { container.innerHTML = `<p class="notice">No se pudo cargar la lección.</p>`; return; } S.lessonCache[m.id] = await data.text(); }
-      frame.srcdoc = S.lessonCache[m.id]; return;
+      frame.srcdoc = guardLesson(S.lessonCache[m.id]); return;
     }
     const { data, error } = await sb.storage.from("materials").createSignedUrl(m.storage_path, 3600);
     if (error) { container.innerHTML = `<p class="notice">No se pudo cargar el archivo.</p>`; return; }
@@ -243,6 +243,8 @@
     if (a) { if (a.status !== "open") await sb.from("activities").update({ status: "open" }).eq("id", a.id); return; }
     await sb.from("activities").insert({ session_id: sessionId, kind: "submission", title: "Respuestas de la lección: " + m.title, status: "open", position: S.activities.length, content: { auto: true, material_id: m.id, prompt: "Respuestas escritas dentro de la lección «" + m.title + "»" } });
   }
+  const LESSON_GUARD = '<script>(function(){document.addEventListener("click",function(e){var a=e.target.closest&&e.target.closest("a[href]");if(!a)return;var h=a.getAttribute("href")||"";if(h.charAt(0)==="#"){e.preventDefault();var id=decodeURIComponent(h.slice(1));var el=id?document.getElementById(id):null;if(el)el.scrollIntoView({behavior:"smooth",block:"start"});else if(!id)window.scrollTo({top:0,behavior:"smooth"});}else if(/^https?:/i.test(h)){a.setAttribute("target","_blank");a.setAttribute("rel","noopener");}},true);document.addEventListener("submit",function(e){e.preventDefault();},true);})();</script>';
+  function guardLesson(html) { return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, m => m + LESSON_GUARD) : LESSON_GUARD + html; }
   function postToLesson(msg) { try { S.stageFrame?.contentWindow?.postMessage(Object.assign({ campus: "campus" }, msg), "*"); } catch {} }
   function gotoTeacherSection(force) {
     const st = S.session.projected_state || {};
@@ -631,7 +633,7 @@
         if (win) win.document.write("<p style='font-family:sans-serif;padding:20px'>Abriendo la lección…</p>");
         const { data, error } = await sb.storage.from(bucket).download(path);
         if (error) { toast("No se pudo abrir la lección"); win && win.close(); return; }
-        const url = URL.createObjectURL(new Blob([await data.text()], { type: "text/html;charset=utf-8" }));
+        const url = URL.createObjectURL(new Blob([guardLesson(await data.text())], { type: "text/html;charset=utf-8" }));
         if (win) win.location.href = url; else location.href = url;
         return;
       }
