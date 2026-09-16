@@ -4,5 +4,7 @@ window.CAMPUS_CONFIG = {
   key: "sb_publishable__zEKscajwJBJ3yB5Rdt1Uw_RpGn_AgD",
   brand: "Rey Jesús Oviedo",
   brandShort: "RJ",
-  tagline: "Campus de estudio"
+  tagline: "Campus de estudio",
+  // Servidor de vídeo Jitsi. Alternativas sin inicio de sesión: "fairmeeting.net"; o vuestro propio servidor.
+  jitsiDomain: "meet.jit.si"
 };

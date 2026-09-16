@@ -11,7 +11,7 @@
     team_challenge: "Reto en equipo", submission: "Entrega (texto o foto)", exit_ticket: "Ticket de salida"
   };
 
-  const S = { lessonCache: {}, stageFrame: null, follow: true, lastSection: null, answersTimer: null, savedOnce: false, session: null, group: null, teacher: false, activities: [], materials: [], questions: [], votes: [], help: [], myResponses: {}, presence: {}, focus: null, tab: null, results: {}, members: [] };
+  const S = { strokes: [], boardLoaded: false, reactions: [], jitsi: null, lessonCache: {}, stageFrame: null, follow: true, lastSection: null, answersTimer: null, savedOnce: false, session: null, group: null, teacher: false, activities: [], materials: [], questions: [], votes: [], help: [], myResponses: {}, presence: {}, focus: null, tab: null, results: {}, members: [] };
   const $ = id => document.getElementById(id);
   const dialog = $("dialog");
   $("dialog-close").addEventListener("click", () => dialog.close());
@@ -58,6 +58,8 @@
     const v = ids.length ? await sb.from("question_votes").select("*").in("question_id", ids) : { data: [] };
     if (v.error) loadError("los votos", v.error); S.votes = v.data || [];
   }
+  async function loadStrokes() { const { data, error } = await sb.from("board_strokes").select("id, user_id, stroke").eq("session_id", sessionId).order("id"); if (error) { if (!/board_strokes/.test(error.message)) loadError("la pizarra", error); return; } S.strokes = data || []; S.boardLoaded = true; drawBoard(); }
+  async function loadReactions() { const { data, error } = await sb.from("reactions").select("*").eq("session_id", sessionId); if (error) { if (!/reactions/.test(error.message)) loadError("el semáforo", error); return; } S.reactions = data || []; }
   async function loadHelp() {
     const { data, error } = await sb.from("help_requests").select("*").eq("session_id", sessionId).eq("status", "open");
     if (error) { loadError("los avisos de ayuda", error); return; }
@@ -80,9 +82,9 @@
 
   // ---------- refresco (con o sin tiempo real) ----------
   function signature() {
-    const s = S.session; return JSON.stringify([s.status, s.projected_material_id, s.projected_state, s.recording_url, s.allow_guests, s.public_view,
+    const s = S.session; return JSON.stringify([s.status, s.projected_material_id, s.projected_state, s.recording_url, s.allow_guests, s.public_view, s.objectives, s.board_active, s.board_writers, s.started_at, (S.agenda || []).map(x => [x.id, x.status]),
       S.activities.map(a => [a.id, a.status, a.results_shared, a.title, a.closes_at, a.content]), S.materials.map(m => [m.id, m.visible, m.title]),
-      S.questions.map(q => [q.id, q.status]), S.votes.length, Object.keys(S.presence).length, S.help.map(h => h.id), Object.keys(S.myResponses), S.results[S.focus]?.total, S.results[S.focus]?.allowed]);
+      S.questions.map(q => [q.id, q.status, q.answer]), S.votes.length, S.reactions.map(r => [r.user_id, r.value]), Object.keys(S.presence).length, S.help.map(h => h.id), Object.keys(S.myResponses), S.results[S.focus]?.total, S.results[S.focus]?.allowed, Object.values(S.results).map(r => r?.total)]);
   }
   function captureForm() {
     const main = $("main"); const f = { text: main.querySelector("#ans-text")?.value, num: main.querySelector("#ans-num")?.value, opts: [...main.querySelectorAll("[name=opt]:checked")].map(i => i.value), q: main.querySelector("#q-text")?.value };
@@ -102,8 +104,9 @@
     if (refreshing) return; refreshing = true;
     try {
       if (!(await loadSession())) return;
-      await Promise.all([loadActivities(), loadMaterials(), loadQuestions(), loadHelp()]);
+      await Promise.all([loadActivities(), loadMaterials(), loadQuestions(), loadHelp(), loadReactions()]);
       await loadMyResponses(); await loadResults(S.focus);
+      if (S.teacher) { for (const a of S.activities.filter(x => (isQuick(x) || x.content?.auto)).slice(-6)) if (a.id !== S.focus) await loadResults(a.id); }
       const sig = signature();
       if (force || sig !== lastSig) { lastSig = sig; const f = captureForm(); render(); restoreForm(f); gotoTeacherSection(false); }
     } finally { refreshing = false; }
@@ -111,48 +114,51 @@
 
   // ---------- render ----------
   function render() {
-    renderTop(); renderMain(); renderSide(); updateBar();
-    $("help-btn").hidden = S.teacher || S.session.status !== "live";
-    const mine = S.help.find(h => h.user_id === me.user.id);
-    $("help-btn").setAttribute("aria-pressed", String(!!mine));
-    $("help-btn").textContent = mine ? "Ya voy · cancelar aviso" : "Pido ayuda";
+    document.body.classList.toggle("teacher", S.teacher); document.body.classList.toggle("student", !S.teacher);
+    renderTop(); renderMain(); renderSide(); renderBottom(); renderTools(); updateBar();
+    $("help-btn").hidden = true;
   }
-
-  function statusTag() {
+  function liveBadge() {
     const s = S.session;
-    if (s.status === "live") return `<span class="live-badge">En directo</span>`;
-    if (s.status === "closed") return `<span class="tag closed">${s.recording_url ? "Grabada" : "Terminada"}</span>`;
-    return `<span class="tag">Programada · ${fmtDate(s.starts_at)}</span>`;
+    if (s.status === "live") return `<span class="live"><i></i> En directo</span>`;
+    if (s.status === "closed") return `<span class="live closed">${s.recording_url ? "Grabada" : "Terminada"}</span>`;
+    return `<span class="live sched"><i></i> ${fmtDate(s.starts_at)}</span>`;
   }
-
+  function teacherName() { const t = S.members.find(m => m.user_id === S.group.teacher_id); return (t?.profile?.full_name || nameCache[S.group.teacher_id] || "tu maestro").split(" ")[0]; }
+  function tickSessionClock() {
+    const el = $("s-clock"); if (!el) return;
+    const from = S.session.started_at ? new Date(S.session.started_at) : null;
+    if (!from || S.session.status !== "live") { el.textContent = ""; return; }
+    const ms = Date.now() - from, h = Math.floor(ms / 3600e3), m = Math.floor(ms % 3600e3 / 60000), sec = Math.floor(ms % 60000 / 1000);
+    el.textContent = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  }
+  setInterval(tickSessionClock, 1000);
   function renderTop() {
     const s = S.session, zoom = s.zoom_url || S.group.zoom_url;
-    $("top-title").textContent = s.title;
-    $("top-status").textContent = S.group.name;
-    $("session-top").innerHTML = `<div><p class="eyebrow">${esc(S.group.name)}</p><h1>${esc(s.title)}</h1><p class="meta" style="margin:8px 0 0">${statusTag()} ${S.teacher ? `· <span class="meta">${Object.keys(S.presence).length} conectados</span>` : ""} <span class="rt-dot" id="rt-dot" data-on="${S.rtStatus === "SUBSCRIBED"}" title="${S.rtStatus === "SUBSCRIBED" ? "Conexión en directo" : "Actualizando cada pocos segundos"}"></span></p></div>
-      <div class="actions">
-        ${zoom ? `<a class="button gold" target="_blank" rel="noopener" href="${esc(zoom)}">Abrir Zoom</a>` : ""}
-        ${S.teacher && s.status !== "closed" ? `<button class="button secondary" data-act="invite">Invitar a esta clase</button>` : ""}
-        ${S.teacher && s.status === "scheduled" ? `<button class="button teal" data-act="start">Iniciar la clase</button>` : ""}
-        ${S.teacher && s.status === "live" ? (openQuick() ? `<button class="button quick-open" data-act="quick-close">Cerrar pregunta · ${(S.results[openQuick().id]?.total ?? 0)} respuestas</button>` : `<button class="button teal" data-act="quick">Pregunta</button>`) : ""}
-        ${S.teacher && s.status === "live" ? `<button class="button danger" data-act="end">Finalizar la clase</button>` : ""}
-        ${S.teacher && s.status === "closed" ? `<button class="button secondary" data-act="recording">${s.recording_url ? "Cambiar grabación" : "Añadir grabación"}</button><button class="button secondary" data-act="reopen">Reabrir</button>` : ""}
+    const top = $("c-top");
+    top.innerHTML = `<a class="brand" href="panel.html" data-brand></a>
+      <div class="t"><h1>${esc(s.title)}</h1><p>${esc(S.group.name)}${S.teacher ? "" : " · " + esc(teacherName())}${S.group.schedule_text ? " · " + esc(S.group.schedule_text) : ""}</p></div>
+      ${liveBadge()}
+      ${S.teacher ? `<span class="clock" id="s-clock"></span>` : ""}
+      <div class="r">
+        ${S.teacher ? `<span class="pill">${Object.keys(S.presence).length} conectados</span><span class="rt-dot" id="rt-dot" data-on="${S.rtStatus === "SUBSCRIBED"}"></span>` : ""}
+        ${S.teacher && s.status !== "closed" ? `<button class="button secondary small" data-act="invite">Invitar</button>` : ""}
+        ${!S.teacher ? `<button class="button secondary small" data-act="materials">📄 Material</button>` : ""}
+        ${S.teacher ? videoLinkHtml() : ""}
+        ${S.teacher ? `<span class="who" title="Salir"><span class="avatar teal">${esc(initials(me.profile.full_name))}</span><button class="button secondary small" data-act="logout">Salir</button></span>` : ""}
       </div>`;
-    $("brief").innerHTML = s.status === "closed"
-      ? `<div class="recording-box">${s.recording_url ? `<a class="button" target="_blank" rel="noopener" href="${esc(s.recording_url)}">Ver la grabación</a><span>Puedes ver la clase y hacer las actividades igualmente: tus respuestas quedarán marcadas como «en diferido».</span>` : `<span class="subtle">Esta clase terminó. ${S.teacher ? "Añade el enlace de la grabación para quienes no pudieron asistir." : "Tu maestro añadirá la grabación cuando esté disponible."}</span>`}
-         ${s.summary ? `<p style="width:100%;margin:6px 0 0"><strong>Resumen:</strong> ${esc(s.summary)}</p>` : ""}</div>`
-      : s.status === "scheduled" && !S.teacher ? `<div class="live-brief compact"><div><strong>La clase aún no ha empezado</strong><p>Cuando tu maestro la inicie, aquí aparecerán el material y las actividades. Mientras tanto, abre Zoom.</p></div></div>` : "";
-    $("session-top").querySelectorAll("[data-act]").forEach(b => b.addEventListener("click", () => sessionAction(b.dataset.act)));
+    renderShell(me, "sesion");
+    top.querySelectorAll("[data-act]").forEach(b => b.addEventListener("click", () => sessionAction(b.dataset.act)));
+    tickSessionClock();
   }
-
   async function sessionAction(act) {
-    if (act === "start") { const { error } = await sb.from("sessions").update({ status: "live" }).eq("id", sessionId); if (error) { toast("No se pudo iniciar: " + error.message); return; } log("session_started"); toast("Clase iniciada"); refreshAll(true); }
+    if (act === "start") { const { error } = await sb.from("sessions").update({ status: "live", started_at: S.session.started_at || new Date().toISOString() }).eq("id", sessionId); if (error) { toast("No se pudo iniciar: " + error.message); return; } log("session_started"); toast("Clase iniciada"); refreshAll(true); }
     if (act === "end") {
       openDialog("Finalizar la clase", `<div class="inline-form"><div class="field"><label for="e-rec">Enlace de la grabación (puedes añadirlo después)</label><input id="e-rec" placeholder="https://…"></div><div class="field"><label for="e-sum">Resumen para el grupo (opcional)</label><textarea id="e-sum" rows="3"></textarea></div><button class="button danger" id="e-go">Finalizar</button></div>`, d => {
         d.querySelector("#e-go").addEventListener("click", async () => {
           await sb.from("activities").update({ status: "closed" }).eq("session_id", sessionId).eq("status", "open").or("content->>auto.is.null,content->>auto.neq.true");
           await sb.from("sessions").update({ status: "closed", recording_url: d.querySelector("#e-rec").value.trim() || null, summary: d.querySelector("#e-sum").value.trim() || null }).eq("id", sessionId);
-          log("session_ended"); dialog.close(); toast("Clase finalizada"); refreshAll(true);
+          log("session_ended"); dialog.close(); toast("Clase finalizada"); await refreshAll(true); summaryDialog();
         });
       });
       return;
@@ -164,6 +170,13 @@
       return;
     }
     if (act === "invite") { inviteDialog(); return; }
+    if (act === "logout") { await sb.auth.signOut(); location.replace("index.html"); return; }
+    if (act === "materials") { materialsDialog(); return; }
+    if (act === "project") { projectDialog(); return; }
+    if (act === "activity") { S.ctab = "act"; renderMain(); $("main").querySelector("details.editor")?.scrollIntoView({ behavior: "smooth" }); const d = $("main").querySelector("details.editor"); if (d) d.open = true; return; }
+    if (act === "objective") { await toggleNextObjective(); return; }
+    if (act === "board") { if (S.session.board_active) { await toggleBoard(false); } else { S.ctab = "board"; renderMain(); } return; }
+    if (act === "summary") { summaryDialog(); return; }
     if (act === "quick") { quickDialog(); return; }
     if (act === "quick-close") { const q = openQuick(); if (q) { await sb.from("activities").update({ status: "closed" }).eq("id", q.id); log("activity_closed", { activity_id: q.id }); toast("Pregunta cerrada"); refreshAll(true); } return; }
     if (act === "reopen") { await sb.from("sessions").update({ status: "live" }).eq("id", sessionId); toast("Clase reabierta"); refreshAll(true); }
@@ -192,16 +205,19 @@
   }
   function stageHtml(m) {
     return `<div class="stage-head"><span class="eyebrow">En pantalla</span><strong>${esc(m.title)}</strong>
-      ${S.teacher ? `<button class="button secondary small" data-project="${m.id}">Quitar de pantalla</button>` : `<a class="button secondary small" href="#" data-file="${esc(m.storage_path || "")}" data-bucket="materials" ${m.storage_path ? "" : "hidden"}>Abrir aparte</a>`}
-      ${S.teacher ? "" : `<button class="button ${S.follow ? "teal" : "secondary"} small" data-follow aria-pressed="${S.follow}">${S.follow ? "Siguiendo al maestro" : "Seguir al maestro"}</button><span class="meta" id="lesson-saved" hidden>Respuestas guardadas ✓</span>`}
+      ${S.teacher ? `<button class="button secondary small" data-project="${m.id}">Quitar de pantalla</button>` : `<span id="follow-slot">${followHtml()}</span>`}
       <button class="button secondary small" data-stage-full>Pantalla completa</button></div><div class="stage" id="stage"></div>`;
   }
-  // Mantiene el iframe montado entre renders (moverlo o recrearlo recargaría la lección)
+  function followHtml() {
+    if (S.teacher) return "";
+    return S.follow ? `<span class="follow-chip">● Vas con ${esc(teacherName())}</span>` : `<button class="follow-back" data-follow>↩ Volver con ${esc(teacherName())}</button>`;
+  }
+  function refreshFollow() { const el = $("follow-slot"); if (el) { el.innerHTML = followHtml(); el.querySelector("[data-follow]")?.addEventListener("click", () => { S.follow = true; refreshFollow(); gotoTeacherSection(true); }); } }
   function ensureStage(main, pm, cardHtml, renderAct) {
     const stage = main.querySelector("#stage");
     if (!stage || stage.dataset.material !== pm.id) {
       S.stageFrame = null;
-      main.innerHTML = `<div id="act-area"></div>` + stageHtml(pm) + (S.teacher ? "" : pipHint());
+      main.innerHTML = `<div id="act-area"></div>` + stageHtml(pm);
       main.querySelector("#stage").dataset.material = pm.id;
       bindStage(main, pm);
     }
@@ -213,7 +229,7 @@
     if (renderAct && d) renderAct(area.querySelector("#act-slot"));
   }
   function bindStage(root, m) {
-    root.querySelector("[data-follow]")?.addEventListener("click", b => { S.follow = !S.follow; const btn = b.currentTarget; btn.setAttribute("aria-pressed", S.follow); btn.textContent = S.follow ? "Siguiendo al maestro" : "Seguir al maestro"; btn.classList.toggle("teal", S.follow); btn.classList.toggle("secondary", !S.follow); if (S.follow) gotoTeacherSection(true); });
+    root.querySelector("[data-follow]")?.addEventListener("click", () => { S.follow = true; refreshFollow(); gotoTeacherSection(true); });
     root.querySelector("[data-stage-full]")?.addEventListener("click", () => { const el = root.querySelector("#stage"); (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el); });
     bindMaterials(root); mountStage(root.querySelector("#stage"), m);
   }
@@ -232,7 +248,7 @@
     const st = S.session.projected_state || {};
     if (!st.section || S.teacher || !S.follow) return;
     if (!force && st.section === S.lastSection) return;
-    S.lastSection = st.section; postToLesson({ type: "goto", section: st.section });
+    S.lastSection = st.section; S.gotoGuard = true; setTimeout(() => S.gotoGuard = false, 1500); postToLesson({ type: "goto", section: st.section });
   }
   function formatAnswers(ans) {
     if (typeof ans === "string") return ans;
@@ -253,6 +269,10 @@
     const d = e.data || {}; if (d.campus !== "lesson" || !S.stageFrame || e.source !== S.stageFrame.contentWindow) return;
     const pm = projectedMaterial(); if (!pm) return;
     if (d.type === "ready") { postToLesson({ type: "context", role: S.teacher ? "teacher" : "student", name: me.profile.full_name, follow: S.follow }); if (!S.teacher) setTimeout(() => gotoTeacherSection(true), 300); }
+    if (d.type === "position" && !S.teacher && d.section) {
+      const ts = S.session.projected_state?.section;
+      if (S.follow && ts && d.section !== ts && !S.gotoGuard) { S.follow = false; refreshFollow(); }
+    }
     if (d.type === "position" && S.teacher && d.section && d.section !== S.lastSection) {
       S.lastSection = d.section;
       clearTimeout(S.posTimer); S.posTimer = setTimeout(() => sb.from("sessions").update({ projected_state: { section: d.section, label: d.label || null, at: new Date().toISOString() } }).eq("id", sessionId).then(() => {}), 400);
@@ -321,26 +341,34 @@
     if (S.teacher) return renderTeacherMain(main);
     const s = S.session;
     const open = S.activities.find(a => a.status === "open" && !a.content?.auto);
+    const q = openQuick();
+    const askHtml = q ? `<div class="ask-card"><p class="eyebrow">${esc(teacherName())} te pregunta</p><h2>${esc(q.title)}</h2><p>${S.myResponses[q.id] ? "Tu respuesta está enviada. Puedes completarla en la caja de abajo." : "Escucha la pregunta y escribe tu respuesta en la caja de abajo."}</p>${S.myResponses[q.id] ? `<div class="mine">${esc(S.myResponses[q.id].content?.text || "")}</div>` : ""}${S.results[q.id]?.allowed ? `<h3 style="margin:12px 0 6px">Respuestas del grupo</h3>${resultsHtml(q, S.results[q.id])}` : ""}</div>` : "";
+    const cardHtml = (open && !isQuick(open)) ? `<details class="activity-card" open><summary><span class="tag live">Actividad</span> ${esc(open.title)}</summary><div id="act-slot"></div></details>` : "";
+    const renderAct = (open && !isQuick(open)) ? slot => renderStudentActivity(slot, open, false) : null;
     if (s.status === "closed") {
       const done = S.activities.filter(a => a.status !== "draft" && !a.content?.auto);
       if (S.focus && done.some(a => a.id === S.focus)) return renderStudentActivity(main, done.find(a => a.id === S.focus), true);
-      main.innerHTML = `<div class="live-activity-head"><div><p class="eyebrow">Después de la clase</p><h2 style="margin:0">Actividades de esta clase</h2></div></div>
-        ${done.length ? `<ul class="seq" style="margin-top:18px">${done.map(a => `<li><span class="kind">${KIND[a.kind]}</span><div class="row"><strong>${esc(a.title)}</strong>${S.myResponses[a.id] ? `<span class="tag">Respondida</span>` : ""}<button class="button secondary small" data-focus="${a.id}">${S.myResponses[a.id] ? "Ver" : "Hacer"}</button></div></li>`).join("")}</ul>` : `<p class="subtle">Esta clase no tuvo actividades.</p>`}`;
+      const pm = projectedMaterial();
+      main.innerHTML = `<div class="student-wait" style="padding:10px 0 18px"><h2>La clase terminó</h2><p>${s.recording_url ? `<a class="button" target="_blank" rel="noopener" href="${esc(s.recording_url)}">Ver la grabación</a><br><br>Puedes hacer las actividades igualmente.` : "Cuando esté la grabación, aparecerá aquí."}</p>${s.summary ? `<p><strong>Resumen:</strong> ${esc(s.summary)}</p>` : ""}</div>
+        ${done.length ? `<ul class="seq">${done.map(a => `<li><span class="kind">${KIND[a.kind]}</span><div class="row"><strong>${esc(a.title)}</strong>${S.myResponses[a.id] ? `<span class="tag">Respondida</span>` : ""}<button class="button secondary small" data-focus="${a.id}">${S.myResponses[a.id] ? "Ver" : "Hacer"}</button></div></li>`).join("")}</ul>` : ""}
+        ${pm ? `<div style="margin-top:16px">${stageHtml(pm)}</div>` : ""}`;
+      if (pm) bindStage(main, pm);
       main.querySelectorAll("[data-focus]").forEach(b => b.addEventListener("click", async () => { S.focus = b.dataset.focus; await loadResults(S.focus); renderMain(); }));
       return;
     }
-    const pm = projectedMaterial();
-    if (pm) {
-      ensureStage(main, pm, open ? `<details class="activity-card" open><summary><span class="tag live">Actividad abierta</span> ${esc(open.title)}</summary><div id="act-slot"></div></details>` : "", open ? slot => renderStudentActivity(slot, open, false) : null);
+    if (s.board_active) {
+      S.stageFrame = null;
+      if (!main.querySelector("#board")) { main.innerHTML = `<div id="act-area"></div><div class="stage-head"><span class="eyebrow">En pantalla</span><strong>Pizarra de ${esc(teacherName())}</strong>${canWrite() ? `<span class="follow-chip">✎ Tienes el lápiz</span>` : ""}</div>${boardHtml()}`; bindBoard(main); }
+      else { const chip = main.querySelector(".stage-head .follow-chip"); if (!!chip !== canWrite()) { main.innerHTML = ""; renderMain(); return; } }
+      const area = main.querySelector("#act-area"); area.innerHTML = askHtml + cardHtml; if (renderAct) renderAct(area.querySelector("#act-slot"));
       return;
     }
-    if (open) return renderStudentActivity(main, open, false);
-    const visible = S.materials.filter(m => m.visible);
-    main.innerHTML = `<div class="live-wait"><h2>${s.status === "live" ? "Atento a Zoom" : "Todavía no ha empezado"}</h2><p>${s.status === "live" ? "Cuando tu maestro lance una actividad aparecerá aquí." : "La clase está programada para " + fmtDate(s.starts_at) + "."}</p></div>
-      ${visible.length ? `<h3>Material de hoy</h3>${materialsHtml(visible, false)}` : ""}`;
-    bindMaterials(main);
+    const pm = projectedMaterial();
+    if (pm) { ensureStage(main, pm, askHtml + cardHtml, renderAct); return; }
+    S.stageFrame = null;
+    main.innerHTML = askHtml + cardHtml + (!q && !open ? `<div class="student-wait"><h2>${s.status === "live" ? "Escucha a " + esc(teacherName()) : "Todavía no ha empezado"}</h2><p>${s.status === "live" ? "Cuando muestre la lección o haga una pregunta, aparecerá aquí." : "La clase es " + fmtDate(s.starts_at) + ". Puedes dejar esta pantalla abierta."}</p></div>` : "");
+    if (renderAct) renderAct(main.querySelector("#act-slot"));
   }
-
   function renderStudentActivity(main, a, deferred) {
     const c = a.content || {}, r = S.myResponses[a.id], rc = r?.content || {};
     if (isQuick(a) && !deferred) {
@@ -402,18 +430,40 @@
 
   // ---- panel principal del maestro ----
   function renderTeacherMain(main) {
-    const pm = projectedMaterial();
-    if (pm) {
-      const a = S.activities.find(x => x.id === S.focus);
-      ensureStage(main, pm, a ? `<details class="activity-card" ${a.status === "open" ? "open" : ""}><summary>${a.status === "open" ? `<span class="tag live">Abierta</span>` : `<span class="tag">Actividad</span>`} ${esc(a.title)}</summary><div id="act-slot"></div></details>` : "", a ? slot => renderTeacherActivity(slot, a) : null);
+    const pm = projectedMaterial(), q = openQuick();
+    if (!S.ctab) S.ctab = pm ? "lesson" : "act";
+    if (S.autoTab !== (q?.id || "") ) { S.autoTab = q?.id || ""; if (q) S.ctab = "act"; }
+    if (S.lastPm !== (pm?.id || "")) { S.lastPm = pm?.id || ""; if (pm) S.ctab = "lesson"; }
+    const followers = Object.values(S.presence).filter(p => p.id !== me.user.id).length;
+    if (S.lastBoard !== !!S.session.board_active) { S.lastBoard = !!S.session.board_active; if (S.session.board_active) S.ctab = "board"; else if (S.ctab === "board") S.ctab = pm ? "lesson" : "act"; }
+    $("c-tabs").innerHTML = `<button data-ctab="lesson" aria-pressed="${S.ctab === "lesson"}">Lección</button><button data-ctab="board" aria-pressed="${S.ctab === "board"}">Pizarra${S.session.board_active ? " ●" : ""}</button><button data-ctab="act" aria-pressed="${S.ctab === "act"}">Actividad${q ? " ●" : ""}</button><span class="spacer"></span>${S.session.board_active ? `<span class="sync">Pizarra en pantalla</span>` : pm ? `<span class="sync">${esc(pm.title)} en pantalla · ${followers} conectados</span>` : ""}`;
+    $("c-tabs").querySelectorAll("[data-ctab]").forEach(b => b.addEventListener("click", () => { S.ctab = b.dataset.ctab; renderMain(); }));
+    if (S.ctab === "board") {
+      S.stageFrame = null;
+      main.innerHTML = `<div class="stage-head"><span class="eyebrow">${S.session.board_active ? "En pantalla para todos" : "Solo la ves tú"}</span><strong>Pizarra</strong>${S.session.board_active ? `<button class="button secondary small" data-board-off>Quitar de pantalla</button>` : `<button class="button teal small" data-board-on>Mostrar a los alumnos</button>`}</div>${boardHtml()}`;
+      main.querySelector("[data-board-on]")?.addEventListener("click", () => toggleBoard(true));
+      main.querySelector("[data-board-off]")?.addEventListener("click", () => toggleBoard(false));
+      bindBoard(main); return;
+    }
+    if (S.ctab === "lesson") {
+      if (pm) { ensureStage(main, pm, "", null); return; }
+      S.stageFrame = null;
+      const list = S.materials;
+      main.innerHTML = `<div class="live-wait"><h2>Nada en pantalla</h2><p>Elige un material para mostrarlo a todos los alumnos a la vez.</p>${list.length ? `<div class="live-controls" style="justify-content:center"><button class="button teal" data-act="project">Proyectar material</button></div>` : `<p class="meta">Añade material desde la tarjeta «Material» de abajo.</p>`}</div>`;
+      main.querySelector("[data-act]")?.addEventListener("click", () => projectDialog());
       return;
     }
+    S.stageFrame = null;
     const a = S.activities.find(x => x.id === S.focus);
-    if (!a) {
-      main.innerHTML = `<div class="live-wait"><h2>Prepara la secuencia</h2><p>Añade lecturas, preguntas, pizarra o entregas. Cuando empiece la clase, ábrelas una a una y verás las respuestas en directo.</p></div>${editorHtml()}`;
-      bindEditor(main); return;
-    }
-    renderTeacherActivity(main, a);
+    const seq = S.activities.length ? `<div class="seq-wrap"><p class="eyebrow" style="margin:0 0 8px">Secuencia</p><ul class="seq">${S.activities.map(x => `<li class="${x.status}${x.id === S.focus ? " focus" : ""}"><span class="kind">${x.content?.auto ? "Lección" : isQuick(x) ? "Pregunta en voz alta" : KIND[x.kind]}</span><div class="row"><strong>${esc(x.title)}</strong>${x.status === "open" ? `<span class="tag live">Abierta</span>` : x.status === "closed" ? `<span class="tag closed">Cerrada</span>` : ""}<button class="button secondary small" data-focus="${x.id}">Ver</button>${x.status !== "open" && !x.content?.auto ? `<button class="button teal small" data-open="${x.id}">Abrir</button>` : ""}</div></li>`).join("")}</ul></div>` : "";
+    if (!a) { main.innerHTML = `<div class="live-wait" style="padding:20px"><h2>Prepara la secuencia</h2><p>Añade lecturas, preguntas, pizarra de ideas o entregas. En clase las abres una a una y ves las respuestas al momento. Para una pregunta improvisada usa el botón «Pregunta» de abajo.</p></div>${editorHtml()}${seq}`; bindEditor(main); bindSeq(main); return; }
+    main.innerHTML = `<div id="act-view"></div>${seq}<div id="ed-slot"></div>`;
+    renderTeacherActivity(main.querySelector("#act-view"), a); bindSeq(main);
+    if (!main.querySelector("details.editor")) { main.querySelector("#ed-slot").innerHTML = editorHtml(); bindEditor(main); }
+  }
+  function bindSeq(root) {
+    root.querySelectorAll("[data-focus]").forEach(b => b.addEventListener("click", async () => { S.focus = b.dataset.focus; S.focusPinned = true; setTimeout(() => S.focusPinned = false, 60000); await loadResults(S.focus); renderMain(); }));
+    root.querySelectorAll("[data-open]").forEach(b => b.addEventListener("click", () => activityAction(S.activities.find(x => x.id === b.dataset.open), "open")));
   }
   function renderTeacherActivity(main, a) {
     const c = a.content || {}, res = S.results[a.id];
@@ -495,58 +545,53 @@
 
   // ---- lateral ----
   function renderSide() {
-    const tabs = S.teacher ? [["seq", "Secuencia"], ["people", "Conectados"], ["materials", "Material"], ["questions", "Dudas"]] : [["materials", "Material"], ["questions", "Dudas"]];
-    if (!S.tab || !tabs.some(t => t[0] === S.tab)) S.tab = tabs[0][0];
-    $("tabs").innerHTML = tabs.map(([k, l]) => `<button data-tab="${k}" aria-pressed="${S.tab === k}">${l}${k === "people" && S.help.length ? ` (${S.help.length}!)` : ""}</button>`).join("");
+    if (!S.teacher) return renderStudentSide();
+    const tabs = [["chat", "Chat"], ["people", "Participantes"], ["notes", "Notas"]];
+    if (!S.tab || !tabs.some(t => t[0] === S.tab)) S.tab = "chat";
+    const pending = S.questions.filter(q => q.status === "pending").length, helping = S.help.length;
+    let vs = $("video-slot"); if (!vs) { vs = document.createElement("div"); vs.id = "video-slot"; vs.className = "teacher-video"; $("c-side").prepend(vs); }
+    renderVideo();
+    $("tabs").innerHTML = tabs.map(([k, l]) => `<button data-tab="${k}" aria-pressed="${S.tab === k}">${l}${k === "chat" && pending ? ` (${pending})` : ""}${k === "people" && helping ? ` (${helping}!)` : ""}</button>`).join("");
     $("tabs").querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => { S.tab = b.dataset.tab; renderSide(); }));
     const side = $("side");
-    if (S.tab === "seq") {
-      side.innerHTML = S.activities.length ? `<ul class="seq">${S.activities.map(a => `<li class="${a.status}${a.id === S.focus ? " focus" : ""}"><span class="kind">${a.content?.auto ? "Lección" : isQuick(a) ? "Pregunta en voz alta" : KIND[a.kind]}</span><div class="row"><strong>${esc(a.title)}</strong>${a.status === "open" ? `<span class="tag live">Abierta</span>` : a.status === "closed" ? `<span class="tag closed">Cerrada</span>` : ""}<button class="button secondary small" data-focus="${a.id}">Ver</button>${a.status !== "open" ? `<button class="button teal small" data-open="${a.id}">Abrir</button>` : ""}</div></li>`).join("")}</ul>` : `<p class="subtle">Aún no hay actividades. Añádelas desde «Nueva actividad».</p>`;
-      side.querySelectorAll("[data-focus]").forEach(b => b.addEventListener("click", async () => { S.focus = b.dataset.focus; S.focusPinned = true; setTimeout(() => S.focusPinned = false, 60000); await loadResults(S.focus); renderMain(); renderSide(); }));
-      side.querySelectorAll("[data-open]").forEach(b => b.addEventListener("click", () => activityAction(S.activities.find(a => a.id === b.dataset.open), "open")));
+    if (S.tab === "chat") {
+      const items = [];
+      S.questions.forEach(q => items.push({ t: new Date(q.created_at), html: `<div class="msg duda ${q.status}"><span class="avatar teal">${esc(initials(q.author?.full_name))}</span><div><span class="who">${esc(q.author?.full_name || "")} · ${fmtDate(q.created_at, { hour: "2-digit", minute: "2-digit" })} <span class="tag" style="background:#faf0d6;color:#7a5c14">Duda</span>${votes(q.id) ? ` · ${votes(q.id)} votos` : ""}</span><div class="b">${esc(q.text)}</div>${q.answer ? `<div class="b ans">↳ ${esc(q.answer)}</div>` : ""}<div class="acts"><button class="button secondary small" data-reply="${q.id}">${q.answer ? "Editar respuesta" : "Responder"}</button>${q.status === "pending" ? `<button class="button secondary small" data-answered="${q.id}">Respondida</button>` : ""}</div></div></div>` }));
+      S.activities.filter(a => isQuick(a) || a.content?.auto).forEach(a => {
+        const res = S.results[a.id], its = res?.items || [];
+        items.push({ t: new Date(a.opened_at || a.created_at), html: `<div class="turn"><div class="th">${a.content?.auto ? "✎" : "🎙"} ${esc(a.title)} <span class="cnt">${its.length} ${a.status === "open" ? "· abierta" : ""}</span></div><div class="msgs">${its.slice(-4).map(i => `<div><b>${esc((i.name || "Alumno/a").split(" ")[0])}</b>${esc((i.content?.text || "").slice(0, 160))}</div>`).join("") || `<div class="meta">Sin respuestas todavía.</div>`}${its.length > 4 || its.some(i => (i.content?.text || "").length > 160) ? `<button class="more" data-focus="${a.id}">ver todas →</button>` : ""}</div></div>` });
+      });
+      items.sort((x, y) => y.t - x.t);
+      side.innerHTML = items.length ? `<div class="thread">${items.map(i => i.html).join("")}</div>` : `<p class="subtle">Aquí aparecerán las dudas de los alumnos, las respuestas a tus preguntas en voz alta y lo que escriban en la lección.</p>`;
+      side.querySelectorAll("[data-answered]").forEach(b => b.addEventListener("click", async () => { await sb.from("questions").update({ status: "answered" }).eq("id", b.dataset.answered); refreshAll(true); }));
+      side.querySelectorAll("[data-reply]").forEach(b => b.addEventListener("click", () => { const q = S.questions.find(x => x.id === b.dataset.reply); openDialog("Responder por escrito", `<p class="subtle" style="margin-top:0">${esc(q.text)}</p><textarea id="rp" rows="3" style="width:100%">${esc(q.answer || "")}</textarea><div class="live-controls"><button class="button" id="rp-go">Enviar a ${esc((q.author?.full_name || "").split(" ")[0])}</button></div>`, d => d.querySelector("#rp-go").addEventListener("click", async () => { const { error } = await sb.from("questions").update({ answer: d.querySelector("#rp").value.trim() || null, answered_at: new Date().toISOString(), status: "answered" }).eq("id", q.id); if (error) toast(error.message); dialog.close(); refreshAll(true); })); }));
+      side.querySelectorAll("[data-focus]").forEach(b => b.addEventListener("click", async () => { S.focus = b.dataset.focus; S.ctab = "act"; await loadResults(S.focus); renderMain(); }));
     }
     if (S.tab === "people") {
-      const open = S.activities.find(a => a.status === "open"); const answered = new Set((S.results[open?.id]?.items || []).map(i => i.user_id));
+      const open = S.activities.find(a => a.status === "open" && !a.content?.auto); const answered = new Set((S.results[open?.id]?.items || []).map(i => i.user_id));
       const students = S.members.filter(m => m.role === "student" || m.role === "guest");
-      const rows = students.map(m => { const on = !!S.presence[m.user_id], h = S.help.find(x => x.user_id === m.user_id); return `<li><span class="dot ${on ? "on" : ""}"></span><span>${esc(m.profile?.full_name || "")}${m.role === "guest" ? ` <span class="meta">(invitado)</span>` : ""}</span><span class="flags">${h ? `<span class="tag help">Pide ayuda</span><button class="button secondary small" data-resolve="${h.id}">Atendido</button>` : ""}${open && answered.has(m.user_id) ? `<span class="tag done">Respondió</span>` : ""}</span></li>`; });
+      const rows = students.map(m => { const on = !!S.presence[m.user_id], h = S.help.find(x => x.user_id === m.user_id); const rx = S.reactions.find(r => r.user_id === m.user_id); return `<li><span class="dot ${on ? "on" : ""}"></span><span>${esc(m.profile?.full_name || "")}${m.role === "guest" ? ` <span class="meta">(invitado)</span>` : ""}</span><span class="flags">${rx ? `<span class="rx rx-${rx.value}" title="${rx.value === "ok" ? "Voy bien" : rx.value === "meh" ? "Más o menos" : "No lo entiendo"}"></span>` : ""}${h ? `<span class="tag help">Pide ayuda</span><button class="button secondary small" data-resolve="${h.id}">Atendido</button>` : ""}${open && answered.has(m.user_id) ? `<span class="tag done">Respondió</span>` : ""}</span></li>`; });
       const guests = Object.values(S.presence).filter(p => !students.some(m => m.user_id === p.id) && p.id !== me.user.id).map(p => `<li><span class="dot on"></span><span>${esc(p.name)}</span><span class="meta" style="margin-left:auto">${esc(p.roleLabel)}</span></li>`);
-      side.innerHTML = `<p class="meta" style="margin:0 0 8px">${Object.keys(S.presence).length} conectados · ${students.length} en el grupo</p><ul class="presence">${rows.join("")}${guests.join("")}</ul>${S.help.filter(h => h.message).map(h => `<p class="live-answer" style="margin-top:10px"><strong>${esc(h.author?.full_name)}:</strong> ${esc(h.message)}</p>`).join("")}`;
+      side.innerHTML = `<p class="meta" style="margin:0 0 8px">${Object.keys(S.presence).length} conectados · ${students.length} en el grupo</p>${semaforoHtml()}<ul class="presence">${rows.join("")}${guests.join("")}</ul>${S.help.filter(h => h.message).map(h => `<p class="live-answer" style="margin-top:10px"><strong>${esc(h.author?.full_name)}:</strong> ${esc(h.message)}</p>`).join("")}`;
       side.querySelectorAll("[data-resolve]").forEach(b => b.addEventListener("click", async () => { await sb.from("help_requests").update({ status: "resolved" }).eq("id", b.dataset.resolve); refreshAll(true); }));
     }
-    if (S.tab === "materials") {
-      const list = S.teacher ? S.materials : S.materials.filter(m => m.visible);
-      side.innerHTML = (list.length ? materialsHtml(list, S.teacher) : `<p class="subtle">${S.teacher ? "Sube material o pega un enlace; se mostrará a los alumnos cuando lo actives." : "Tu maestro aún no ha mostrado material."}</p>`) +
-        (S.teacher ? `<details class="editor"><summary>Añadir material</summary><div class="inline-form" style="margin-top:12px">
-          <div class="field"><label for="m-title">Título</label><input id="m-title"></div>
-          <div class="field"><label for="m-kind">Tipo</label><select id="m-kind"><option value="link">Enlace</option><option value="text">Texto</option><option value="file">Archivo (PDF, imagen…)</option></select></div>
-          <div class="field" id="m-url-f"><label for="m-url">Enlace</label><input id="m-url" placeholder="https://…"></div>
-          <div class="field" id="m-text-f" hidden><label for="m-text">Texto</label><textarea id="m-text" rows="4"></textarea></div>
-          <div class="field" id="m-file-f" hidden><label for="m-file">Archivo</label><input id="m-file" type="file"></div>
-          <label style="font-size:14px"><input type="checkbox" id="m-visible" checked> Mostrar a los alumnos ya</label>
-          <button class="button" id="m-save" style="margin-top:8px">Guardar material</button></div></details>` : "");
-      bindMaterials(side);
-      const mk = side.querySelector("#m-kind");
-      if (mk) { const u = () => { side.querySelector("#m-url-f").hidden = mk.value !== "link"; side.querySelector("#m-text-f").hidden = mk.value !== "text"; side.querySelector("#m-file-f").hidden = mk.value !== "file"; }; mk.addEventListener("change", u); u();
-        side.querySelector("#m-save").addEventListener("click", async () => {
-          const title = side.querySelector("#m-title").value.trim(); if (!title) { toast("Ponle un título"); return; }
-          const row = { session_id: sessionId, title, kind: mk.value, visible: side.querySelector("#m-visible").checked, position: S.materials.length };
-          if (mk.value === "link") row.url = side.querySelector("#m-url").value.trim();
-          if (mk.value === "text") row.content = side.querySelector("#m-text").value.trim();
-          if (mk.value === "file") { const f = side.querySelector("#m-file").files[0]; if (!f) { toast("Elige un archivo"); return; } const path = `${S.group.id}/${Date.now()}-${f.name.replace(/[^\w.\-]/g, "_")}`; const { error } = await sb.storage.from("materials").upload(path, f); if (error) { toast("No se pudo subir: " + error.message); return; } row.storage_path = path; }
-          const { error } = await sb.from("materials").insert(row); if (error) { toast(error.message); return; } toast("Material guardado"); refreshAll(true);
-        }); }
-    }
-    if (S.tab === "questions") {
-      const sorted = [...S.questions].sort((a, b) => (a.status === "answered") - (b.status === "answered") || votes(b.id) - votes(a.id));
-      side.innerHTML = `${S.session.status !== "closed" ? `<div class="inline-form" style="margin-bottom:14px"><textarea id="q-text" rows="2" placeholder="Escribe tu duda; el grupo puede votarla"></textarea><button class="button secondary small" id="q-send" style="justify-self:start">Enviar duda</button></div>` : ""}
-        ${sorted.length ? sorted.map(q => `<div class="q-item ${q.status}"><div class="row"><button class="button secondary small vote" data-vote="${q.id}" aria-pressed="${S.votes.some(v => v.question_id === q.id && v.user_id === me.user.id)}">▲ ${votes(q.id)}</button><strong>${esc(q.text)}</strong>${S.teacher && q.status === "pending" ? `<button class="button small" data-answered="${q.id}">Respondida</button>` : ""}</div><small class="meta">${esc(q.author?.full_name || "")}${q.status === "answered" ? " · respondida" : ""}</small></div>`).join("") : `<p class="subtle">Sin dudas todavía.</p>`}`;
-      side.querySelector("#q-send")?.addEventListener("click", async () => { const t = side.querySelector("#q-text").value.trim(); if (!t) return; const { error } = await sb.from("questions").insert({ session_id: sessionId, user_id: me.user.id, text: t }); if (error) { toast("No se pudo enviar la duda: " + error.message); return; } side.querySelector("#q-text").value = ""; log("question", { text: t }); toast("Duda enviada"); refreshAll(true); });
-      side.querySelectorAll("[data-vote]").forEach(b => b.addEventListener("click", async () => { const id = b.dataset.vote, mine = S.votes.find(v => v.question_id === id && v.user_id === me.user.id); if (mine) await sb.from("question_votes").delete().match({ question_id: id, user_id: me.user.id }); else await sb.from("question_votes").insert({ question_id: id, user_id: me.user.id }); refreshAll(true); }));
-      side.querySelectorAll("[data-answered]").forEach(b => b.addEventListener("click", async () => { await sb.from("questions").update({ status: "answered" }).eq("id", b.dataset.answered); refreshAll(true); }));
+    if (S.tab === "notes") {
+      side.innerHTML = `<p class="meta" style="margin:0 0 8px">Notas privadas: solo las ves tú. Se guardan solas.</p><textarea class="notes" id="notes">${esc(S.session.teacher_notes || "")}</textarea><p class="meta" id="notes-st"></p>`;
+      const ta = side.querySelector("#notes"); let t;
+      ta.addEventListener("input", () => { clearTimeout(t); t = setTimeout(async () => { const { error } = await sb.from("sessions").update({ teacher_notes: ta.value }).eq("id", sessionId); side.querySelector("#notes-st").textContent = error ? "No se pudo guardar" : "Guardado ✓"; S.session.teacher_notes = ta.value; }, 800); });
     }
   }
-  function pipHint() {
-    return `<p class="meta pip-hint">Para ver al maestro mientras trabajas: en Meet o Zoom pulsa «ventana flotante» (picture-in-picture) y su cámara quedará encima del campus.</p>`;
+  function renderStudentSide() {
+    if (!S.seenAnswers) { try { S.seenAnswers = JSON.parse(localStorage.getItem("seen:" + sessionId) || "[]"); } catch { S.seenAnswers = []; } }
+    const visible = S.materials.filter(m => m.visible);
+    $("tabs").innerHTML = "";
+    const answered = S.questions.filter(q => q.user_id === me.user.id && q.answer && !(S.seenAnswers || []).includes(q.id));
+    const side = $("side"); if (!side.querySelector("#video-slot")) side.innerHTML = `<div id="video-slot"></div><div id="side-rest"></div>`;
+    side.querySelector("#side-rest").innerHTML = `${answered.map(q => `<div class="c-card answer-card"><p class="eyebrow" style="margin:0">${esc(teacherName())} te responde</p><p class="q">${esc(q.text)}</p><p class="a">${esc(q.answer)}</p><button class="button secondary small" data-seen="${q.id}">Vale</button></div>`).join("")}
+      <div class="c-card mat-card"><h3>Material de hoy</h3>${visible.length ? `<ul class="mat-list">${visible.map(m => `<li>${matIcon(m)}<div class="nm"><b>${esc(m.title)}</b></div><div class="acts">${matOpenBtn(m)}</div></li>`).join("")}</ul>` : `<p class="meta">${esc(teacherName())} aún no ha mostrado material.</p>`}</div>`;
+    bindMaterials($("side"));
+    $("side").querySelectorAll("[data-seen]").forEach(b => b.addEventListener("click", () => { S.seenAnswers = [...(S.seenAnswers || []), b.dataset.seen]; try { localStorage.setItem("seen:" + sessionId, JSON.stringify(S.seenAnswers)); } catch {} renderSide(); }));
+    renderVideo();
   }
   const isQuick = a => !!a?.content?.quick;
   const openQuick = () => S.activities.find(a => a.status === "open" && isQuick(a));
@@ -562,6 +607,7 @@
       ${m.kind === "text" ? `<div class="material-text">${esc(m.content)}</div>` : ""}</li>`).join("")}</ul>`;
   }
   function bindMaterials(root) {
+    root.querySelectorAll("[data-text]").forEach(b => b.addEventListener("click", () => { const m = S.materials.find(x => x.id === b.dataset.text); if (m) openDialog(m.title, `<div class="material-text">${esc(m.content)}</div>`); }));
     root.querySelectorAll("[data-project]").forEach(b => b.addEventListener("click", async () => {
       const id = b.dataset.project, on = S.session.projected_material_id !== id;
       const r1 = await sb.from("materials").update({ visible: true }).eq("id", id).eq("visible", false);
@@ -596,6 +642,228 @@
   }
 
 
+
+
+  // ---- vídeo de la clase (Jitsi incrustado o Meet/Zoom aparte) ----
+  const videoMode = () => (S.group.video_provider || "jitsi") === "jitsi" && Campus.cfg.jitsiDomain ? "jitsi" : "external";
+  const jitsiRoom = () => "campus-rj-" + sessionId.replace(/-/g, "").slice(0, 20);
+  const jitsiUrl = () => `https://${Campus.cfg.jitsiDomain}/${jitsiRoom()}`;
+  function loadJitsiApi() {
+    return new Promise((res, rej) => { if (window.JitsiMeetExternalAPI) return res(); const sc = document.createElement("script"); sc.src = `https://${Campus.cfg.jitsiDomain}/external_api.js`; sc.onload = res; sc.onerror = rej; document.head.appendChild(sc); });
+  }
+  async function mountJitsi(container) {
+    if (S.jitsi && S.jitsiEl && document.body.contains(S.jitsiEl)) { container.appendChild(S.jitsiEl); return; }
+    try { await loadJitsiApi(); } catch { container.innerHTML = `<p class="hint">No se pudo cargar el vídeo. ${videoLinkHtml()}</p>`; return; }
+    const el = document.createElement("div"); el.className = "jitsi-box"; container.appendChild(el); S.jitsiEl = el;
+    S.jitsi = new JitsiMeetExternalAPI(Campus.cfg.jitsiDomain, {
+      roomName: jitsiRoom(), parentNode: el, width: "100%", height: "100%", lang: "es",
+      userInfo: { displayName: me.profile.full_name },
+      configOverwrite: { startWithAudioMuted: !S.teacher, startWithVideoMuted: !S.teacher, prejoinConfig: { enabled: false }, disableDeepLinking: true, toolbarButtons: S.teacher ? ["microphone", "camera", "desktop", "recording", "mute-everyone", "tileview", "settings", "hangup"] : ["microphone", "camera", "tileview", "hangup"], hideConferenceSubject: true, disableInviteFunctions: true, notifications: [] },
+      interfaceConfigOverwrite: { SHOW_JITSI_WATERMARK: false, SHOW_WATERMARK_FOR_GUESTS: false, MOBILE_APP_PROMO: false, DEFAULT_REMOTE_DISPLAY_NAME: "Participante" }
+    });
+    S.jitsi.addListener("videoConferenceLeft", () => { S.jitsi?.dispose(); S.jitsi = null; S.jitsiEl = null; renderVideo(); });
+  }
+  function videoLinkHtml() {
+    const zoom = S.session.zoom_url || S.group.zoom_url;
+    if (videoMode() === "jitsi") return `<a class="button gold small" target="_blank" rel="noopener" href="${jitsiUrl()}">Abrir el vídeo aparte</a>`;
+    if (!zoom) return "";
+    return `<a class="button gold small" target="_blank" rel="noopener" href="${esc(zoom)}">${/meet\.google/.test(zoom) ? "Abrir Meet" : "Abrir Zoom"}</a>`;
+  }
+  function renderVideo() {
+    const box = $("video-slot"); if (!box) return;
+    if (S.jitsi && S.jitsiEl && box.contains(S.jitsiEl)) { if (S.session.status === "closed") { S.jitsi.dispose(); S.jitsi = null; S.jitsiEl = null; } else return; }
+    if (videoMode() !== "jitsi") {
+      const zoom = S.session.zoom_url || S.group.zoom_url, isMeet = /meet\.google/.test(zoom || "");
+      box.innerHTML = `<div class="video-card"><div><div class="face">👤</div><div class="name">${esc(teacherName())}</div><div class="hint">${zoom ? (isMeet ? "Abre Meet y pulsa «ventana flotante» para verle aquí encima." : "Abre Zoom y usa la ventana flotante.") : "El vídeo se abre aparte."}</div>${videoLinkHtml()}</div></div>`; return;
+    }
+    if (S.session.status !== "live" && !S.teacher) { box.innerHTML = `<div class="video-card"><div><div class="face">👤</div><div class="name">${esc(teacherName())}</div><div class="hint">El vídeo aparecerá aquí cuando empiece la clase.</div></div></div>`; return; }
+    if (S.jitsi) { const c = box.querySelector(".video-live"); if (c && S.jitsiEl && !c.contains(S.jitsiEl)) c.appendChild(S.jitsiEl); if (c) return; }
+    box.innerHTML = `<div class="video-card video-live" id="video-live"></div><p class="video-note">${S.teacher ? `Si el vídeo se queda en «esperando al moderador», <a target="_blank" rel="noopener" href="${jitsiUrl()}">ábrelo en una pestaña</a>, inicia sesión una vez y vuelve.` : `Si no ves a ${esc(teacherName())}, pulsa «Unirme al vídeo».`}</p>`;
+    const live = box.querySelector("#video-live");
+    if (!S.teacher && !S.videoJoined) { live.innerHTML = `<div><div class="face">👤</div><div class="name">${esc(teacherName())}</div><button class="button gold small" id="video-join">Unirme al vídeo</button></div>`; live.querySelector("#video-join").addEventListener("click", () => { S.videoJoined = true; live.innerHTML = ""; mountJitsi(live); }); return; }
+    mountJitsi(live);
+  }
+
+
+  // ---- pizarra ----
+  const canWrite = () => S.teacher || (S.session.board_writers || []).includes(me.user.id);
+  function boardHtml() {
+    const writers = (S.session.board_writers || []);
+    return `<div class="board-wrap"><div class="board-tools">
+      ${canWrite() ? `<span class="board-colors">${["#101827", "#087f74", "#d4515c", "#d9aa50", "#2563eb"].map(c => `<button class="bc" data-color="${c}" style="background:${c}" aria-pressed="${(S.boardColor || "#101827") === c}"></button>`).join("")}</span>
+        <button class="button secondary small" data-width="3" aria-pressed="${(S.boardWidth || 3) === 3}">Fino</button><button class="button secondary small" data-width="8" aria-pressed="${S.boardWidth === 8}">Grueso</button>
+        <button class="button secondary small" data-eraser aria-pressed="${!!S.boardEraser}">Borrador</button>` : `<span class="meta">Solo ${esc(teacherName())} dibuja. Pide el lápiz si quieres participar.</span>`}
+      ${S.teacher ? `<span class="spacer"></span><button class="button secondary small" data-board-undo>Deshacer</button><button class="button secondary small" data-board-clear>Limpiar</button><button class="button secondary small" data-board-save>Guardar imagen</button><button class="button secondary small" data-board-lend>Ceder lápiz${writers.length ? ` (${writers.length})` : ""}</button>` : ""}
+      </div><div class="board-area"><canvas id="board" aria-label="Pizarra"></canvas></div></div>`;
+  }
+  function bindBoard(root) {
+    const cv = root.querySelector("#board"); if (!cv) return;
+    S.boardCanvas = cv; fitBoard(); drawBoard(); if (!S.boardLoaded) loadStrokes();
+    root.querySelectorAll("[data-color]").forEach(b => b.addEventListener("click", () => { S.boardColor = b.dataset.color; S.boardEraser = false; root.querySelectorAll("[data-color]").forEach(x => x.setAttribute("aria-pressed", x === b)); root.querySelector("[data-eraser]")?.setAttribute("aria-pressed", "false"); }));
+    root.querySelectorAll("[data-width]").forEach(b => b.addEventListener("click", () => { S.boardWidth = Number(b.dataset.width); root.querySelectorAll("[data-width]").forEach(x => x.setAttribute("aria-pressed", x === b)); }));
+    root.querySelector("[data-eraser]")?.addEventListener("click", b => { S.boardEraser = !S.boardEraser; b.currentTarget.setAttribute("aria-pressed", S.boardEraser); });
+    root.querySelector("[data-board-undo]")?.addEventListener("click", async () => { const mine = [...S.strokes].reverse().find(x => x.user_id === me.user.id); if (!mine) return; await sb.from("board_strokes").delete().eq("id", mine.id); S.strokes = S.strokes.filter(x => x.id !== mine.id); drawBoard(); });
+    root.querySelector("[data-board-clear]")?.addEventListener("click", async () => { if (!confirm("¿Limpiar la pizarra para todos?")) return; await sb.from("board_strokes").delete().eq("session_id", sessionId); S.strokes = []; drawBoard(); });
+    root.querySelector("[data-board-save]")?.addEventListener("click", saveBoardImage);
+    root.querySelector("[data-board-lend]")?.addEventListener("click", lendDialog);
+    if (!canWrite()) return;
+    let cur = null;
+    const pos = e => { const r = cv.getBoundingClientRect(); const p = e.touches ? e.touches[0] : e; return [(p.clientX - r.left) / r.width, (p.clientY - r.top) / r.height]; };
+    const start = e => { e.preventDefault(); cur = { color: S.boardEraser ? "#ffffff" : (S.boardColor || "#101827"), width: S.boardEraser ? 24 : (S.boardWidth || 3), points: [pos(e)] }; };
+    const move = e => { if (!cur) return; e.preventDefault(); cur.points.push(pos(e)); drawStroke(cur, true); };
+    const end = async () => { if (!cur) return; const st = cur; cur = null; if (st.points.length < 2) st.points.push(st.points[0]); const local = { id: "tmp" + Date.now(), user_id: me.user.id, stroke: st }; S.strokes.push(local); const { data, error } = await sb.from("board_strokes").insert({ session_id: sessionId, user_id: me.user.id, stroke: st }).select("id").single(); if (error) { toast("No se pudo dibujar: " + error.message); S.strokes = S.strokes.filter(x => x !== local); drawBoard(); } else local.id = data.id; };
+    cv.addEventListener("mousedown", start); cv.addEventListener("mousemove", move); window.addEventListener("mouseup", end);
+    cv.addEventListener("touchstart", start, { passive: false }); cv.addEventListener("touchmove", move, { passive: false }); cv.addEventListener("touchend", end);
+  }
+  function fitBoard() { const cv = S.boardCanvas; if (!cv || !cv.isConnected) return; const w = cv.parentElement.clientWidth || 800; const h = Math.round(w * 0.62); const dpr = window.devicePixelRatio || 1; cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + "px"; cv.style.height = h + "px"; }
+  window.addEventListener("resize", () => { fitBoard(); drawBoard(); });
+  function drawStroke(st, partial) {
+    const cv = S.boardCanvas; if (!cv || !cv.isConnected) return; const ctx = cv.getContext("2d"), W = cv.width, H = cv.height, dpr = window.devicePixelRatio || 1;
+    ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = st.color; ctx.lineWidth = st.width * dpr;
+    const pts = st.points; if (!pts.length) return;
+    ctx.beginPath(); const from = partial && pts.length > 2 ? pts.length - 2 : 0; ctx.moveTo(pts[from][0] * W, pts[from][1] * H);
+    for (let i = from + 1; i < pts.length; i++) ctx.lineTo(pts[i][0] * W, pts[i][1] * H);
+    if (pts.length === 1) ctx.lineTo(pts[0][0] * W + 0.1, pts[0][1] * H);
+    ctx.stroke();
+  }
+  function drawBoard() { const cv = S.boardCanvas; if (!cv || !cv.isConnected) return; const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height); S.strokes.forEach(x => drawStroke(x.stroke)); }
+  async function saveBoardImage() {
+    const cv = S.boardCanvas; if (!cv) return;
+    cv.toBlob(async blob => {
+      const path = `${S.group.id}/${Date.now()}-pizarra.png`;
+      const { error } = await sb.storage.from("materials").upload(path, blob, { contentType: "image/png" });
+      if (error) { toast("No se pudo guardar: " + error.message); return; }
+      await sb.from("materials").insert({ session_id: sessionId, title: "Pizarra · " + new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }), kind: "file", storage_path: path, visible: true, position: S.materials.length });
+      toast("Pizarra guardada en el material"); refreshAll(true);
+    }, "image/png");
+  }
+  function lendDialog() {
+    const students = S.members.filter(m => m.role === "student" || m.role === "guest"), writers = S.session.board_writers || [];
+    openDialog("Ceder el lápiz", students.length ? `<p class="subtle" style="margin-top:0">Quien tenga el lápiz puede dibujar en la pizarra de todos.</p><ul class="members">${students.map(m => `<li><span style="flex:1">${esc(m.profile?.full_name || "")}${S.presence[m.user_id] ? "" : ` <span class="meta">(no conectado)</span>`}</span><button class="button ${writers.includes(m.user_id) ? "" : "secondary"} small" data-lend="${m.user_id}">${writers.includes(m.user_id) ? "Quitar lápiz" : "Dar lápiz"}</button></li>`).join("")}</ul><div class="live-controls"><button class="button secondary small" id="lend-none">Recoger todos</button></div>` : `<p class="subtle">No hay alumnos en el grupo.</p>`, d => {
+      d.querySelectorAll("[data-lend]").forEach(b => b.addEventListener("click", async () => { const id = b.dataset.lend; const w = writers.includes(id) ? writers.filter(x => x !== id) : [...writers, id]; await sb.from("sessions").update({ board_writers: w }).eq("id", sessionId); dialog.close(); refreshAll(true); }));
+      d.querySelector("#lend-none")?.addEventListener("click", async () => { await sb.from("sessions").update({ board_writers: [] }).eq("id", sessionId); dialog.close(); refreshAll(true); });
+    });
+  }
+  async function toggleBoard(on) { const { error } = await sb.from("sessions").update({ board_active: on }).eq("id", sessionId); if (error) { toast("No se pudo abrir la pizarra: " + error.message); return; } log(on ? "board_on" : "board_off"); refreshAll(true); }
+
+
+  // ---- resumen al terminar ----
+  async function summaryDialog() {
+    const { data, error } = await sb.rpc("session_summary", { p_session: sessionId });
+    if (error || !data) { toast("No se pudo cargar el resumen" + (error ? ": " + error.message : "")); return; }
+    const li = arr => arr.length ? `<ul class="sum-list">${arr.map(x => `<li>${esc(typeof x === "string" ? x : x.name + (x.guest ? " (invitado)" : ""))}</li>`).join("")}</ul>` : `<p class="meta">Nadie.</p>`;
+    const obj = data.objectives || [];
+    openDialog("Resumen de la clase", `<div class="sum">
+      <div class="sum-grid">
+        <div><b>${data.attendees.length}</b><span>asistieron</span></div>
+        <div><b>${data.turns.length}</b><span>actividades</span></div>
+        <div><b>${data.questions.length}</b><span>dudas</span></div>
+        <div><b>${obj.filter(o => o.done).length}/${obj.length}</b><span>objetivos</span></div>
+      </div>
+      <p class="meta">Semáforo final: 🟢 ${data.reactions.ok} · 🟡 ${data.reactions.meh} · 🔴 ${data.reactions.lost}</p>
+      <h3>Asistentes</h3>${li(data.attendees)}
+      <h3>Del grupo que no vinieron</h3>${li(data.absent)}
+      <h3>Actividades</h3>${data.turns.length ? `<ul class="sum-list">${data.turns.map(t => `<li>${t.quick ? "🎙 " : ""}${esc(t.title)} <span class="meta">· ${t.responses} respuestas</span></li>`).join("")}</ul>` : `<p class="meta">Ninguna.</p>`}
+      <h3>Asistieron pero no respondieron a nada</h3>${li(data.silent)}
+      <h3>Dudas</h3>${data.questions.length ? `<ul class="sum-list">${data.questions.map(q => `<li>${esc(q.text)} <span class="meta">· ${esc(q.by)} · ${q.status === "answered" ? "respondida" : "pendiente"}</span>${q.answer ? `<br><span class="meta">↳ ${esc(q.answer)}</span>` : ""}</li>`).join("")}</ul>` : `<p class="meta">Ninguna.</p>`}
+      ${obj.length ? `<h3>Objetivos</h3><ul class="sum-list">${obj.map(o => `<li>${o.done ? "✅" : "⬜"} ${esc(o.text)}</li>`).join("")}</ul>` : ""}
+      <div class="live-controls"><button class="button secondary small" id="sum-print">Imprimir / guardar PDF</button><button class="button secondary small" id="sum-copy">Copiar como texto</button></div></div>`, d => {
+      d.querySelector("#sum-print").addEventListener("click", () => { document.body.classList.add("print-summary"); window.print(); setTimeout(() => document.body.classList.remove("print-summary"), 500); });
+      d.querySelector("#sum-copy").addEventListener("click", () => copy(d.querySelector(".sum").innerText));
+    });
+  }
+
+  // ---- tarjetas inferiores (maestro) ----
+  function matIcon(m) { const k = m.kind === "link" ? "link" : /\.html?$/i.test(m.storage_path || "") ? "html" : /\.pdf$/i.test(m.storage_path || "") ? "pdf" : /\.(png|jpe?g|gif|webp)$/i.test(m.storage_path || "") ? "img" : "txt"; const lbl = { link: "WEB", html: "HTML", pdf: "PDF", img: "IMG", txt: "TXT" }[k]; return `<span class="ic ${k}">${lbl}</span>`; }
+  function matOpenBtn(m) { return m.kind === "link" ? `<a class="button secondary small" target="_blank" rel="noopener" href="${esc(m.url)}">Abrir</a>` : m.kind === "file" ? `<a class="button secondary small" href="#" data-file="${esc(m.storage_path)}" data-bucket="materials">Abrir</a>` : `<button class="button secondary small" data-text="${m.id}">Leer</button>`; }
+  async function loadAgenda() { const { data } = await sb.from("sessions").select("id, title, starts_at, status, recording_url").eq("group_id", S.group.id).order("starts_at"); S.agenda = data || []; }
+  function renderBottom() {
+    if (!S.teacher) { $("c-bottom").innerHTML = ""; return; }
+    const obj = S.session.objectives || [], pm = S.session.projected_material_id;
+    const now = Date.now(), ag = (S.agenda || []).filter(x => new Date(x.starts_at) > now - 14 * 86400e3).slice(0, 6);
+    $("c-bottom").innerHTML = `
+      <div class="c-card"><h3>Lección de hoy <button class="lk" data-edit-obj>Editar</button></h3>
+        ${obj.length ? `<p class="meta" style="margin:0 0 8px">Objetivos · toca para marcar</p><ul class="obj">${obj.map((o, i) => `<li class="${o.done ? "ok" : ""}" data-obj="${i}"><i></i><span>${esc(o.text)}</span></li>`).join("")}</ul>` : `<p class="meta">Escribe los objetivos de la clase para marcarlos según avances.</p>`}</div>
+      <div class="c-card"><h3>Material <button class="lk" data-add-mat>+ Añadir</button></h3>
+        ${S.materials.length ? `<ul class="mat-list">${S.materials.map(m => `<li class="${m.visible ? "" : "hidden-m"}">${matIcon(m)}<div class="nm"><b>${esc(m.title)}</b><small>${pm === m.id ? "En pantalla" : m.visible ? "Visible para los alumnos" : "Oculto"}</small></div><div class="acts"><button class="button ${pm === m.id ? "" : "teal"} small" data-project="${m.id}">${pm === m.id ? "Quitar" : "Proyectar"}</button><button class="icon-button" title="Más" data-mat-menu="${m.id}">⋯</button></div></li>`).join("")}</ul>` : `<p class="meta">Sube la lección, un PDF, un texto o un enlace.</p>`}</div>
+      <div class="c-card"><h3>Agenda del grupo <a class="lk" href="panel.html">Ver todas</a></h3>
+        ${ag.length ? `<ul class="agenda">${ag.map(x => `<li class="${x.id === sessionId ? "now" : ""}"><b>${x.id === sessionId ? "Hoy" : fmtDate(x.starts_at, { day: "2-digit", month: "short" })}</b><div><a href="sesion.html?id=${x.id}">${esc(x.title)}</a><small>${x.status === "live" ? "En directo" : x.status === "closed" ? (x.recording_url ? "Grabada" : "Terminada") : "Programada · " + fmtDate(x.starts_at, { hour: "2-digit", minute: "2-digit" })}</small></div></li>`).join("")}</ul>` : `<p class="meta">Sin más clases programadas.</p>`}</div>`;
+    const b = $("c-bottom");
+    b.querySelector("[data-edit-obj]").addEventListener("click", objectivesDialog);
+    b.querySelector("[data-add-mat]").addEventListener("click", addMaterialDialog);
+    b.querySelectorAll("[data-obj]").forEach(li => li.addEventListener("click", () => toggleObjective(Number(li.dataset.obj))));
+    b.querySelectorAll("[data-mat-menu]").forEach(x => x.addEventListener("click", () => materialMenuDialog(S.materials.find(m => m.id === x.dataset.matMenu))));
+    bindMaterials(b);
+  }
+  async function saveObjectives(list) { const { error } = await sb.from("sessions").update({ objectives: list }).eq("id", sessionId); if (error) toast("No se pudieron guardar los objetivos"); else refreshAll(true); }
+  async function toggleObjective(i) { const list = [...(S.session.objectives || [])]; if (!list[i]) return; list[i] = { ...list[i], done: !list[i].done }; await saveObjectives(list); }
+  async function toggleNextObjective() { const list = S.session.objectives || []; const i = list.findIndex(o => !o.done); if (i < 0) { toast(list.length ? "Todos los objetivos marcados" : "Escribe primero los objetivos en «Lección de hoy»"); return; } await toggleObjective(i); toast("Objetivo marcado: " + list[i].text); }
+  function objectivesDialog() {
+    openDialog("Objetivos de la clase", `<p class="subtle" style="margin-top:0">Uno por línea. Durante la clase los marcas con un toque o con el botón «Objetivo».</p><textarea id="obj-text" rows="6" style="width:100%">${esc((S.session.objectives || []).map(o => o.text).join("\n"))}</textarea><div class="live-controls"><button class="button" id="obj-save">Guardar</button></div>`, d => {
+      d.querySelector("#obj-save").addEventListener("click", async () => { const old = S.session.objectives || []; const list = d.querySelector("#obj-text").value.split("\n").map(t => t.trim()).filter(Boolean).map(t => ({ text: t, done: !!old.find(o => o.text === t && o.done) })); await saveObjectives(list); dialog.close(); });
+    });
+  }
+  function addMaterialDialog() {
+    openDialog("Añadir material", `<div class="inline-form">
+      <div class="field"><label for="m-title">Título</label><input id="m-title"></div>
+      <div class="field"><label for="m-kind">Tipo</label><select id="m-kind"><option value="file">Archivo (lección HTML, PDF, imagen…)</option><option value="link">Enlace</option><option value="text">Texto</option></select></div>
+      <div class="field" id="m-file-f"><label for="m-file">Archivo</label><input id="m-file" type="file"></div>
+      <div class="field" id="m-url-f" hidden><label for="m-url">Enlace</label><input id="m-url" placeholder="https://…"></div>
+      <div class="field" id="m-text-f" hidden><label for="m-text">Texto</label><textarea id="m-text" rows="5"></textarea></div>
+      <label style="font-size:14px"><input type="checkbox" id="m-visible" checked> Visible para los alumnos</label>
+      <button class="button" id="m-save" style="margin-top:8px">Guardar material</button></div>`, d => {
+      const mk = d.querySelector("#m-kind"); const u = () => { d.querySelector("#m-url-f").hidden = mk.value !== "link"; d.querySelector("#m-text-f").hidden = mk.value !== "text"; d.querySelector("#m-file-f").hidden = mk.value !== "file"; }; mk.addEventListener("change", u); u();
+      d.querySelector("#m-file").addEventListener("change", e => { const f = e.target.files[0]; if (f && !d.querySelector("#m-title").value) d.querySelector("#m-title").value = f.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " "); });
+      d.querySelector("#m-save").addEventListener("click", async () => {
+        const title = d.querySelector("#m-title").value.trim(); if (!title) { toast("Ponle un título"); return; }
+        const row = { session_id: sessionId, title, kind: mk.value, visible: d.querySelector("#m-visible").checked, position: S.materials.length };
+        if (mk.value === "link") row.url = d.querySelector("#m-url").value.trim();
+        if (mk.value === "text") row.content = d.querySelector("#m-text").value.trim();
+        if (mk.value === "file") { const f = d.querySelector("#m-file").files[0]; if (!f) { toast("Elige un archivo"); return; } d.querySelector("#m-save").disabled = true; const path = `${S.group.id}/${Date.now()}-${f.name.replace(/[^\w.\-]/g, "_")}`; const { error } = await sb.storage.from("materials").upload(path, f); if (error) { toast("No se pudo subir: " + error.message); d.querySelector("#m-save").disabled = false; return; } row.storage_path = path; }
+        const { error } = await sb.from("materials").insert(row); if (error) { toast(error.message); return; } dialog.close(); toast("Material guardado"); refreshAll(true);
+      });
+    });
+  }
+  function materialMenuDialog(m) {
+    if (!m) return;
+    openDialog(m.title, `<div class="live-controls" style="flex-direction:column;align-items:stretch">
+      ${matOpenBtn(m).replace("small", "")}
+      <button class="button secondary" data-toggle="${m.id}" data-visible="${m.visible}">${m.visible ? "Ocultar a los alumnos" : "Mostrar a los alumnos"}</button>
+      <button class="button danger" data-del="${m.id}">Borrar</button></div>`, d => { bindMaterials(d); d.querySelectorAll("[data-toggle],[data-del]").forEach(b => b.addEventListener("click", () => dialog.close())); });
+  }
+  function projectDialog() {
+    if (!S.materials.length) { addMaterialDialog(); return; }
+    openDialog("Proyectar", `<p class="subtle" style="margin-top:0">Se mostrará en la pantalla de todos los alumnos.</p><ul class="mat-list">${S.materials.map(m => `<li>${matIcon(m)}<div class="nm"><b>${esc(m.title)}</b></div><div class="acts"><button class="button teal small" data-project="${m.id}">Proyectar</button></div></li>`).join("")}</ul>`, d => { bindMaterials(d); d.querySelectorAll("[data-project]").forEach(b => b.addEventListener("click", () => dialog.close())); });
+  }
+  function materialsDialog() {
+    const visible = S.materials.filter(m => m.visible);
+    openDialog("Material de hoy", visible.length ? `<ul class="mat-list">${visible.map(m => `<li>${matIcon(m)}<div class="nm"><b>${esc(m.title)}</b></div><div class="acts">${matOpenBtn(m)}</div></li>`).join("")}</ul><p class="meta" style="margin-top:14px"><button class="button secondary small" id="dlg-logout">Salir del campus</button></p>` : `<p class="subtle">${esc(teacherName())} aún no ha mostrado material.</p><p class="meta"><button class="button secondary small" id="dlg-logout">Salir del campus</button></p>`, d => { bindMaterials(d); d.querySelector("#dlg-logout")?.addEventListener("click", async () => { await sb.auth.signOut(); location.replace("index.html"); }); });
+  }
+  function renderTools() {
+    const t = $("c-tools"); t.hidden = !S.teacher; if (!S.teacher) return;
+    const s = S.session, q = openQuick(), pm = S.session.projected_material_id;
+    t.innerHTML = `
+      <button class="tb ask" data-act="${q ? "quick-close" : "quick"}" ${s.status !== "live" ? "disabled" : ""}><span>🎙</span>${q ? `Cerrar · ${S.results[q.id]?.total ?? 0}` : "Pregunta"}</button>
+      <button class="tb ${pm ? "active" : ""}" data-act="project"><span>▣</span>${pm ? "Cambiar" : "Proyectar"}</button>
+      <button class="tb ${S.session.board_active ? "active" : ""}" data-act="board"><span>✎</span>Pizarra</button>
+      <button class="tb" data-act="activity"><span>☑</span>Actividad</button>
+      <button class="tb" data-act="objective"><span>⚑</span>Objetivo</button>
+      <div class="sema-tools" title="Cómo van los alumnos">${semaforoHtml()}</div>
+      ${s.status === "scheduled" ? `<button class="tb start" data-act="start"><span>▶</span>Iniciar</button>` : s.status === "live" ? `<button class="tb end" data-act="end"><span>■</span>Terminar</button>` : `<button class="tb" data-act="summary"><span>📋</span>Resumen</button><button class="tb start" data-act="reopen"><span>↻</span>Reabrir</button><button class="tb" data-act="recording"><span>🎬</span>Grabación</button>`}`;
+    t.querySelectorAll("[data-act]").forEach(b => b.addEventListener("click", () => sessionAction(b.dataset.act)));
+  }
+
+
+  // ---- semáforo ----
+  const rxCount = v => S.reactions.filter(r => r.value === v && S.presence[r.user_id]).length;
+  function semaforoHtml() { return `<div class="sema-sum"><span class="rx rx-ok"></span>${rxCount("ok")} <span class="rx rx-meh"></span>${rxCount("meh")} <span class="rx rx-lost"></span>${rxCount("lost")}</div>`; }
+  async function setReaction(v) {
+    const mine = S.reactions.find(r => r.user_id === me.user.id);
+    if (mine && mine.value === v) { await sb.from("reactions").delete().match({ session_id: sessionId, user_id: me.user.id }); }
+    else { const { error } = await sb.from("reactions").upsert({ session_id: sessionId, user_id: me.user.id, value: v, updated_at: new Date().toISOString() }); if (error) { toast("No se pudo enviar: " + error.message); return; } if (v === "lost") log("lost"); }
+    refreshAll(true);
+  }
+
   // ---- barra de respuesta del alumno ----
   function updateBar() {
     const bar = $("reply-bar"); if (!bar) return;
@@ -604,9 +872,13 @@
     if (!show) return;
     const t = openText(), label = $("bar-label"), ta = $("bar-text");
     const mine = t && S.myResponses[t.id];
-    if (t) { label.textContent = (isQuick(t) ? "Responde: " : "Actividad: ") + t.title; label.className = "reply-label"; ta.placeholder = mine ? "Puedes completar tu respuesta…" : "Escribe tu respuesta…"; if (mine && !ta.value && ta !== document.activeElement) ta.value = mine.content?.text || ""; }
-    else { label.textContent = S.session.status === "closed" ? "Comentario o duda" : "Duda o comentario para el maestro"; label.className = "reply-label duda"; ta.placeholder = "Escribe una duda o comentario…"; }
-    const h = S.help.find(x => x.user_id === me.user.id); $("bar-help").setAttribute("aria-pressed", String(!!h)); $("bar-help").title = h ? "Retirar aviso de ayuda" : "Pido ayuda";
+    if (t) { label.textContent = isQuick(t) ? "Tu respuesta · a la pregunta de " + teacherName() : "Tu respuesta · " + t.title; label.className = "reply-label"; ta.placeholder = mine ? "Puedes completar tu respuesta…" : "Escribe tu respuesta…"; if (mine && !ta.value && ta !== document.activeElement) ta.value = mine.content?.text || ""; }
+    else { label.textContent = S.session.status === "closed" ? "Comentario o duda" : "Duda o comentario para " + teacherName() + " · lo verá en su pantalla"; label.className = "reply-label duda"; ta.placeholder = "Escribe una duda o comentario…"; }
+    const mineRx = S.reactions.find(r => r.user_id === me.user.id)?.value;
+    let semaEl = $("bar-sema"); if (!semaEl) { semaEl = document.createElement("div"); semaEl.id = "bar-sema"; semaEl.className = "sema"; bar.insertBefore(semaEl, $("bar-status")); }
+    semaEl.innerHTML = [["ok", "🟢", "Voy bien"], ["meh", "🟡", "Más o menos"], ["lost", "🔴", "No lo entiendo"]].map(([v, ic, l]) => `<button data-rx="${v}" aria-pressed="${mineRx === v}"><span>${ic}</span>${l}</button>`).join("");
+    semaEl.querySelectorAll("[data-rx]").forEach(b => b.addEventListener("click", () => setReaction(b.dataset.rx)));
+    $("bar-help").hidden = true;
     $("bar-send").textContent = mine && t ? "Actualizar" : "Enviar";
   }
   async function barSend() {
@@ -621,7 +893,7 @@
       } else {
         const { error } = await sb.from("questions").insert({ session_id: sessionId, user_id: me.user.id, text });
         if (error) { toast("No se pudo enviar: " + error.message); return; }
-        log("question", { text }); ta.value = ""; st.textContent = "Duda enviada ✓ · el maestro la verá en su lista"; st.hidden = false;
+        log("question", { text }); ta.value = ""; st.textContent = "Duda enviada ✓ · " + teacherName() + " la verá"; st.hidden = false;
       }
       setTimeout(() => st.hidden = true, 4000); refreshAll(true);
     } finally { $("bar-send").disabled = false; }
@@ -658,6 +930,9 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "questions", filter: f }, bump)
       .on("postgres_changes", { event: "*", schema: "public", table: "question_votes" }, bump)
       .on("postgres_changes", { event: "*", schema: "public", table: "responses" }, bump)
+      .on("postgres_changes", { event: "*", schema: "public", table: "reactions", filter: f }, bump)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "board_strokes", filter: f }, payload => { if (!S.strokes.some(x => x.id === payload.new.id)) { S.strokes.push(payload.new); drawStroke(payload.new.stroke); } })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "board_strokes" }, () => { loadStrokes(); })
       .subscribe(status => { S.rtStatus = status; const el = $("rt-dot"); if (el) { el.dataset.on = status === "SUBSCRIBED"; el.title = status === "SUBSCRIBED" ? "Conexión en directo" : "Actualizando cada pocos segundos"; } });
     setInterval(() => refreshAll(false), S.teacher ? 5000 : 4000);
   }
@@ -665,6 +940,8 @@
   // ---------- arranque ----------
   if (!(await loadSession())) return;
   if (!S.teacher) sb.from("attendance").insert({ session_id: sessionId, user_id: me.user.id }).then(() => {});
+  await namesFor([S.group.teacher_id]);
+  if (S.teacher) await loadAgenda();
   await refreshAll(true); subscribe();
-  $("loading").hidden = true; $("app").hidden = false;
+  $("loading")?.remove(); $("contenido").hidden = false;
 })();

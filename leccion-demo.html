@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lección demo · Cómo funciona una clase en el campus</title>
+<style>
+  :root { --ink:#1b2430; --muted:#5b6673; --acc:#0f766e; --gold:#d9a441; --line:#dfe5ea; --paper:#f7f8f6; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-size:17px; line-height:1.6; color:var(--ink); background:var(--paper); }
+  header { padding:28px 20px 12px; max-width:860px; margin:0 auto; }
+  h1 { font-family:Georgia,serif; font-size:1.9rem; margin:0 0 6px; }
+  h2 { font-family:Georgia,serif; font-size:1.4rem; margin:0 0 10px; }
+  .meta { color:var(--muted); font-size:14px; }
+  .progress { position:sticky; top:0; height:6px; background:#e6ebee; z-index:5; }
+  .progress i { display:block; height:100%; width:0; background:var(--acc); transition:width .3s; }
+  nav.map { max-width:860px; margin:0 auto; padding:0 20px 10px; display:flex; flex-wrap:wrap; gap:8px; }
+  nav.map a { text-decoration:none; color:var(--acc); border:1px solid var(--line); border-radius:999px; padding:6px 12px; font-size:14px; background:white; }
+  nav.map a.current { background:var(--acc); color:white; border-color:var(--acc); }
+  section { max-width:860px; margin:0 auto; padding:26px 20px; border-top:1px solid var(--line); scroll-margin-top:12px; }
+  .steps { display:grid; gap:10px; margin:16px 0; }
+  .step { display:grid; grid-template-columns:44px 1fr; gap:12px; align-items:start; padding:12px; border:1px solid var(--line); border-radius:12px; background:white; cursor:pointer; }
+  .step[aria-disabled=true] { opacity:.45; cursor:not-allowed; }
+  .step.active { border-color:var(--acc); box-shadow:inset 4px 0 0 var(--acc); }
+  .step .n { width:36px; height:36px; border-radius:50%; background:var(--gold); color:var(--ink); font-weight:800; display:grid; place-items:center; }
+  .step p { margin:6px 0 0; display:none; color:var(--muted); }
+  .step.active p { display:block; }
+  .write { margin-top:16px; padding:14px; border:1px dashed var(--acc); border-radius:12px; background:#f0faf8; }
+  .write label { font-weight:700; display:block; margin-bottom:6px; }
+  textarea { width:100%; min-height:80px; font:inherit; padding:10px; border:1px solid var(--line); border-radius:10px; }
+  .q { padding:12px 0; border-top:1px solid var(--line); }
+  .q label { display:block; padding:6px 0; }
+  button { font:inherit; font-weight:700; padding:10px 16px; border-radius:10px; border:0; background:var(--acc); color:white; cursor:pointer; }
+  button.alt { background:white; color:var(--acc); border:1px solid var(--acc); }
+  .ok { color:var(--acc); font-weight:700; } .bad { color:#b3261e; font-weight:700; }
+  svg { max-width:100%; height:auto; }
+  .teacher-hide { display:none; }
+  footer { max-width:860px; margin:0 auto; padding:20px; color:var(--muted); font-size:14px; }
+</style>
+</head>
+<body>
+<div class="progress"><i id="bar"></i></div>
+<header>
+  <h1>Cómo funciona una clase en el campus</h1>
+  <p class="meta">Lección de demostración · 3 apartados · examen final</p>
+</header>
+<nav class="map" id="map"></nav>
+
+<section id="ap-1" data-title="1. Antes de la clase">
+  <h2>1. Antes de la clase</h2>
+  <p>El maestro prepara la clase con material y actividades. Los alumnos entran al grupo con un código de invitación.</p>
+  <svg viewBox="0 0 600 150" role="img" aria-labelledby="t1"><title id="t1">Esquema: maestro prepara, alumnos entran con código</title>
+    <rect x="20" y="35" width="170" height="80" rx="14" fill="#fff" stroke="#0f766e" stroke-width="2"/><text x="105" y="70" text-anchor="middle" font-size="15" font-weight="700">Maestro</text><text x="105" y="94" text-anchor="middle" font-size="13" fill="#5b6673">prepara material</text>
+    <rect x="410" y="35" width="170" height="80" rx="14" fill="#fff" stroke="#0f766e" stroke-width="2"/><text x="495" y="70" text-anchor="middle" font-size="15" font-weight="700">Alumnos</text><text x="495" y="94" text-anchor="middle" font-size="13" fill="#5b6673">entran con código</text>
+    <line x1="190" y1="75" x2="410" y2="75" stroke="#d9a441" stroke-width="3"/><polygon points="400,68 412,75 400,82" fill="#d9a441"/><text x="300" y="66" text-anchor="middle" font-size="13" fill="#5b6673">invitación por WhatsApp</text>
+  </svg>
+  <div class="write"><label for="w1">Escribe: ¿qué necesita un alumno para entrar al grupo?</label><textarea id="w1" data-q="Apartado 1 · qué necesita un alumno"></textarea></div>
+</section>
+
+<section id="ap-2" data-title="2. Durante la clase">
+  <h2>2. Durante la clase</h2>
+  <p>La clase sigue una secuencia de pasos. Pulsa cada paso en orden para ver su explicación.</p>
+  <div class="steps" id="steps">
+    <div class="step" id="paso-1" tabindex="0"><span class="n">1</span><div><strong>Abrir Zoom o Meet</strong><p>Es el canal de voz y cámara. La ventana flotante permite ver al maestro sobre el campus.</p></div></div>
+    <div class="step" id="paso-2" tabindex="0" aria-disabled="true"><span class="n">2</span><div><strong>Iniciar la clase en el campus</strong><p>El maestro pulsa «Iniciar la clase» y proyecta el material.</p></div></div>
+    <div class="step" id="paso-3" tabindex="0" aria-disabled="true"><span class="n">3</span><div><strong>Lanzar actividades</strong><p>Cada actividad aparece al instante en los alumnos; las respuestas se ven en directo.</p></div></div>
+    <div class="step" id="paso-4" tabindex="0" aria-disabled="true"><span class="n">4</span><div><strong>Atender dudas y ayuda</strong><p>El botón «Pido ayuda» y la pestaña de dudas ordenan las preguntas.</p></div></div>
+  </div>
+  <div class="write"><label for="w2">Escribe: ¿qué paso te parece más útil y por qué?</label><textarea id="w2" data-q="Apartado 2 · paso más útil"></textarea></div>
+</section>
+
+<section id="ap-3" data-title="3. Después de la clase">
+  <h2>3. Después de la clase</h2>
+  <p>El maestro finaliza la clase y añade la grabación. Quien faltó puede verla y responder las actividades en diferido.</p>
+  <div class="write"><label for="w3">Escribe: ¿qué harías si no pudiste asistir?</label><textarea id="w3" data-q="Apartado 3 · si no pude asistir"></textarea></div>
+</section>
+
+<section id="examen" data-title="Examen">
+  <h2>Examen de la lección</h2>
+  <div class="q"><strong>1. ¿Con qué entra un alumno al grupo?</strong>
+    <label><input type="radio" name="e1" value="a"> Con una contraseña que le da el coordinador</label>
+    <label><input type="radio" name="e1" value="b"> Con un código de invitación</label>
+    <label><input type="radio" name="e1" value="c"> Con el enlace de Zoom</label></div>
+  <div class="q"><strong>2. ¿Quién proyecta el material durante la clase?</strong>
+    <label><input type="radio" name="e2" value="a"> El maestro</label>
+    <label><input type="radio" name="e2" value="b"> Cada alumno</label></div>
+  <div class="q"><strong>3. Verdadero o falso: quien falta a la clase puede responder las actividades después.</strong>
+    <label><input type="radio" name="e3" value="v"> Verdadero</label>
+    <label><input type="radio" name="e3" value="f"> Falso</label></div>
+  <div class="q"><strong>4. Explica con tus palabras para qué sirve «Seguir al maestro».</strong><textarea id="e4" data-q="Examen 4 · seguir al maestro"></textarea></div>
+  <p id="result"></p>
+  <button id="grade">Corregir</button> <button class="alt" id="copy">Copiar mis respuestas</button>
+</section>
+<footer>Fuente: guía de funcionamiento del campus. <a href="#ap-1">Volver arriba</a></footer>
+
+<script>
+(function(){
+  const P = m => { if (parent !== window) parent.postMessage(Object.assign({campus:"lesson"}, m), "*"); };
+  window.CampusBridge = {
+    position: (section, label) => P({type:"position", section, label}),
+    answers:  answers => P({type:"answers", answers, title: document.title})
+  };
+  window.addEventListener("message", e => {
+    const d = e.data || {}; if (d.campus !== "campus") return;
+    if (d.type === "goto") { const el = document.getElementById(d.section); if (el) { el.scrollIntoView({behavior:"smooth", block:"start"}); document.dispatchEvent(new CustomEvent("campus:goto", {detail:d})); } }
+    if (d.type === "context") { window.CAMPUS_CONTEXT = d; document.dispatchEvent(new CustomEvent("campus:context", {detail:d})); }
+  });
+  P({type:"ready"});
+})();
+</script>
+<script>
+  const KEY = "leccion-demo-campus";
+  const sections = [...document.querySelectorAll("section")];
+  const map = document.getElementById("map");
+  sections.forEach(s => { const a = document.createElement("a"); a.href = "#" + s.id; a.textContent = s.dataset.title; a.dataset.for = s.id; map.appendChild(a); });
+  const seen = new Set(); let suppress = 0;
+  const io = new IntersectionObserver(es => es.forEach(e => { if (!e.isIntersecting) return; const sec = e.target; seen.add(sec.id); document.getElementById("bar").style.width = (seen.size / sections.length * 100) + "%"; map.querySelectorAll("a").forEach(a => a.classList.toggle("current", a.dataset.for === sec.id)); if (!suppress) CampusBridge.position(sec.id, sec.dataset.title); }), { threshold: .5 });
+  sections.forEach(s => io.observe(s));
+
+  // pasos en orden
+  const steps = [...document.querySelectorAll(".step")];
+  function activate(i, emit) { if (steps[i].getAttribute("aria-disabled") === "true" && !window.CAMPUS_CONTEXT?.follow) return; steps.forEach(s => s.classList.remove("active")); steps[i].classList.add("active"); steps[i].setAttribute("aria-disabled", "false"); if (steps[i+1]) steps[i+1].setAttribute("aria-disabled", "false"); if (emit) CampusBridge.position(steps[i].id, "Paso " + (i+1)); }
+  steps.forEach((s, i) => { s.addEventListener("click", () => activate(i, true)); s.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(i, true); } }); });
+  document.addEventListener("campus:goto", e => { const i = steps.findIndex(s => s.id === e.detail.section); suppress++; setTimeout(() => suppress--, 1200); if (i >= 0) { steps.slice(0, i+1).forEach(s => s.setAttribute("aria-disabled", "false")); activate(i, false); } });
+  document.addEventListener("campus:context", e => { if (e.detail.role === "teacher") document.querySelectorAll(".write, #examen .q, #grade, #copy").forEach(el => el.classList.add("teacher-hide")); });
+
+  // respuestas
+  const fields = [...document.querySelectorAll("textarea")];
+  function collect() { const a = {}; fields.forEach(t => { if (t.value.trim()) a[t.dataset.q] = t.value.trim(); }); ["e1","e2","e3"].forEach(n => { const v = document.querySelector(`[name=${n}]:checked`); if (v) a["Examen " + n.slice(1)] = v.parentElement.textContent.trim(); }); const r = document.getElementById("result").textContent; if (r) a["Puntuación"] = r; return a; }
+  let t; function changed() { const a = collect(); try { localStorage.setItem(KEY, JSON.stringify(a)); } catch {} clearTimeout(t); t = setTimeout(() => CampusBridge.answers(a), 1000); }
+  try { const saved = JSON.parse(localStorage.getItem(KEY) || "{}"); fields.forEach(f => { if (saved[f.dataset.q]) f.value = saved[f.dataset.q]; }); } catch {}
+  document.addEventListener("input", changed); document.addEventListener("change", changed);
+  document.getElementById("grade").addEventListener("click", () => {
+    const key = { e1:"b", e2:"a", e3:"v" }; let ok = 0; const out = [];
+    Object.entries(key).forEach(([n, v]) => { const c = document.querySelector(`[name=${n}]:checked`)?.value; if (c === v) ok++; out.push(`${n.slice(1)}: ${c === v ? "correcta" : "incorrecta"}`); });
+    document.getElementById("result").innerHTML = `<span class="${ok === 3 ? "ok" : "bad"}">${ok} de 3 correctas</span> · ${out.join(", ")}. La pregunta 4 la revisa el maestro.`;
+    changed();
+  });
+  document.getElementById("copy").addEventListener("click", () => { const a = collect(); const txt = document.title + "\n" + Object.entries(a).map(([k, v]) => k + ": " + v).join("\n"); navigator.clipboard?.writeText(txt).then(() => alert("Respuestas copiadas")); });
+</script>
+</body>
+</html>

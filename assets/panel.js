@@ -76,11 +76,11 @@
   function groupCard(g) {
     const canManage = role === "coordinator" || g.teacher_id === me.user.id || g.memberships.some(m => m.user_id === me.user.id && m.role === "teacher");
     const sessions = [...g.sessions].sort((a, b) => new Date(b.starts_at) - new Date(a.starts_at));
-    const students = g.memberships.filter(m => m.role === "student").length;
+    const students = g.memberships.filter(m => m.role === "student").length, guests = g.memberships.filter(m => m.role === "guest").length;
     return `<article class="panel group-card">
       <div class="head"><div>
         <h2>${esc(g.name)}</h2>
-        <p class="meta" style="margin:4px 0 0">${esc(g.teacher?.full_name || "")} · ${esc(g.schedule_text || "sin horario")} · ${students} ${students === 1 ? "alumno" : "alumnos"}</p>
+        <p class="meta" style="margin:4px 0 0">${esc(g.teacher?.full_name || "")} · ${esc(g.schedule_text || "sin horario")} · ${students} ${students === 1 ? "alumno" : "alumnos"}${guests ? ` · ${guests} ${guests === 1 ? "invitado" : "invitados"}` : ""}</p>
         ${g.description ? `<p class="subtle" style="margin:8px 0 0;font-size:14px">${esc(g.description)}</p>` : ""}
       </div>
       <div class="actions">
@@ -119,8 +119,9 @@
         <div class="field"><label for="g-teacher">Maestro/a</label><select id="g-teacher">${(teachers || []).map(t => `<option value="${t.id}" ${t.id === me.user.id ? "selected" : ""}>${esc(t.full_name)}</option>`).join("")}</select></div>
         <div class="row">
           <div class="field"><label for="g-sched">Horario</label><input id="g-sched" placeholder="Martes 20:00"></div>
-          <div class="field"><label for="g-zoom">Enlace de Zoom</label><input id="g-zoom" placeholder="https://zoom.us/j/…"></div>
+          <div class="field"><label for="g-zoom">Enlace de Meet/Zoom (si no usáis el vídeo del campus)</label><input id="g-zoom" placeholder="https://meet.google.com/…"></div>
         </div>
+        <div class="field"><label for="g-video">Vídeo de la clase</label><select id="g-video"><option value="jitsi">Dentro del campus (los alumnos no abren nada)</option><option value="external">Aparte, con Meet o Zoom (ventana flotante)</option></select></div>
         <div class="field"><label for="g-desc">Descripción (opcional)</label><textarea id="g-desc" rows="2"></textarea></div>
         <p class="form-error" id="g-error"></p>
         <button class="button" id="g-go">Crear grupo</button>
@@ -129,7 +130,7 @@
         const name = d.querySelector("#g-name").value.trim();
         if (!name) { d.querySelector("#g-error").textContent = "Ponle un nombre al grupo."; return; }
         const teacher_id = d.querySelector("#g-teacher").value;
-        const { data: g, error } = await sb.from("groups").insert({ name, teacher_id, schedule_text: d.querySelector("#g-sched").value.trim() || null, zoom_url: d.querySelector("#g-zoom").value.trim() || null, description: d.querySelector("#g-desc").value.trim() || null }).select().single();
+        const { data: g, error } = await sb.from("groups").insert({ name, teacher_id, schedule_text: d.querySelector("#g-sched").value.trim() || null, zoom_url: d.querySelector("#g-zoom").value.trim() || null, description: d.querySelector("#g-desc").value.trim() || null, video_provider: d.querySelector("#g-video").value }).select().single();
         if (error) { d.querySelector("#g-error").textContent = error.message; return; }
         await sb.from("memberships").insert({ group_id: g.id, user_id: teacher_id, role: "teacher" });
         dialog.close(); toast("Grupo creado"); load();
@@ -142,7 +143,26 @@
       <p class="subtle" style="margin-top:0">Genera un código y compártelo por WhatsApp. Quien lo introduzca en el campus entrará en este grupo. Cada persona necesita además tener usuario: si aún no lo tiene, pídelo a coordinación con su correo.</p>
       <div id="inv-result"></div>
       <div class="field"><label for="inv-days">Válido durante</label><select id="inv-days"><option value="7">7 días</option><option value="30" selected>30 días</option><option value="180">6 meses</option></select></div>
-      <button class="button" id="inv-go">Generar código</button>`, d => {
+      <button class="button" id="inv-go">Generar código</button>
+      <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
+      <h3 style="margin:0 0 6px">Invitados habituales (sin registro)</h3>
+      <p class="subtle" style="margin:0 0 10px;font-size:14px">Un código fijo del grupo para quien viene cada semana pero aún no se registra. Entra con su nombre y este código; después ya ve directamente la próxima clase. Caduca a los 90 días sin venir.</p>
+      <div id="guest-result">${g.allow_guests && g.guest_code ? guestBox(g.guest_code) : ""}</div>
+      <div class="live-controls"><button class="button secondary small" id="guest-on">${g.allow_guests && g.guest_code ? "Regenerar" : "Activar código de invitados"}</button>${g.allow_guests ? `<button class="button secondary small" id="guest-off">Desactivar</button>` : ""}</div>`, d => {
+      const guestLink = code => location.href.replace(/[^/]*$/, "index.html?clase=" + code);
+      d.querySelector("#guest-on").addEventListener("click", async () => {
+        const { data: code, error } = await sb.rpc("set_group_guest_code", { p_group: g.id, p_enable: true });
+        if (error) { toast("No se pudo activar: " + error.message); return; }
+        g.guest_code = code; g.allow_guests = true;
+        d.querySelector("#guest-result").innerHTML = guestBox(code); bindGuest(d, code);
+      });
+      d.querySelector("#guest-off")?.addEventListener("click", async () => { await sb.rpc("set_group_guest_code", { p_group: g.id, p_enable: false }); dialog.close(); toast("Código de invitados desactivado"); load(); });
+      if (g.allow_guests && g.guest_code) bindGuest(d, g.guest_code);
+      function bindGuest(d, code) {
+        const msg = `Hola, te invito al grupo "${g.name}" del campus ${Campus.cfg.brand}.\nEntra aquí: ${guestLink(code)}\nEscribe tu nombre y el código ${code}. Sin registro.${g.schedule_text ? "\nNos vemos " + g.schedule_text + "." : ""}`;
+        d.querySelector("#guest-copy")?.addEventListener("click", () => copy(guestLink(code)));
+        d.querySelector("#guest-wa")?.setAttribute("href", whatsappMessage(msg));
+      }
       d.querySelector("#inv-go").addEventListener("click", async () => {
         const { data: code, error } = await sb.rpc("create_invitation", { p_group: g.id, p_days: Number(d.querySelector("#inv-days").value) });
         if (error) { toast("No se pudo generar: " + error.message); return; }
@@ -155,8 +175,13 @@
     });
   }
 
+  function guestBox(code) {
+    return `<div class="code-box"><strong>${esc(code)}</strong><span class="meta">Código de invitados</span></div>
+      <div class="live-controls"><button class="button secondary small" id="guest-copy">Copiar enlace</button><a class="button small" id="guest-wa" target="_blank" rel="noopener" href="#">Enviar por WhatsApp</a></div>`;
+  }
+
   function membersDialog(g) {
-    const rows = g.memberships.map(m => `<li><span class="avatar teal" style="width:30px;height:30px;font-size:11px">${esc(initials(m.profile?.full_name))}</span><span style="flex:1">${esc(m.profile?.full_name || "")}</span><span class="meta">${m.role === "teacher" ? "Maestro/a" : "Alumno/a"}</span>${(m.role === "student" && (role === "coordinator" || g.teacher_id === me.user.id)) ? `<button class="button secondary small" data-remove="${m.user_id}">Quitar</button>` : ""}</li>`).join("");
+    const rows = g.memberships.map(m => `<li><span class="avatar teal" style="width:30px;height:30px;font-size:11px">${esc(initials(m.profile?.full_name))}</span><span style="flex:1">${esc(m.profile?.full_name || "")}</span><span class="meta">${m.role === "teacher" ? "Maestro/a" : m.role === "guest" ? "Invitado/a" : "Alumno/a"}</span>${(m.role !== "teacher" && (role === "coordinator" || g.teacher_id === me.user.id)) ? `<button class="button secondary small" data-remove="${m.user_id}">Quitar</button>` : ""}</li>`).join("");
     openDialog("Alumnos de " + g.name, rows ? `<ul class="members">${rows}</ul>` : `<p class="subtle">Todavía nadie se ha unido. Genera un código de invitación.</p>`, d => {
       d.querySelectorAll("[data-remove]").forEach(b => b.addEventListener("click", async () => {
         if (!confirm("¿Quitar a esta persona del grupo?")) return;

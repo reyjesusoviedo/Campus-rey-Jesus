@@ -27,3 +27,19 @@ abre actividades una a una → "Mostrar resultados" cuando quiera → "Finalizar
 pega el enlace de la grabación.
 Alumno: Abrir Zoom → Ir a la clase → responde lo que se abra → "Pido ayuda" si
 lo necesita → si faltó, ve la grabación y responde en diferido.
+
+## Fase 1 (nueva pantalla de clase)
+- Ejecutar `supabase_parche_fase1.sql` (objetivos, notas y cronómetro).
+- Archivos: `sesion.html`, `assets/clase.css` (nuevo), `assets/sesion.js`.
+- Maestro: pestañas Lección/Actividad en el centro, Chat/Participantes/Notas a la derecha,
+  Lección de hoy (objetivos), Material y Agenda abajo, barra de herramientas inferior.
+- Alumno: pantalla única: vídeo (Meet flotante), pregunta de la maestra, lección sincronizada,
+  caja fija abajo. Botón Material arriba.
+
+## Fase 2 (vídeo incrustado, semáforo, respuestas)
+- Ejecutar `supabase_parche_fase2.sql`.
+- Archivos: `assets/sesion.js`, `assets/clase.css`, `assets/config.js` (jitsiDomain), `assets/panel.js` (selector de vídeo por grupo).
+
+## Fase 3 (pizarra y resumen)
+- Ejecutar `supabase_parche_fase3.sql`.
+- Archivos: `assets/sesion.js`, `assets/clase.css`.
