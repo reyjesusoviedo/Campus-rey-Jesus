@@ -37,6 +37,14 @@
   </div>
 </div>
 <button class="button help-btn" id="help-btn" hidden aria-pressed="false">Pido ayuda</button>
+<div class="reply-bar" id="reply-bar" hidden>
+  <div class="reply-bar-inner">
+    <button class="icon-button reply-help" id="bar-help" aria-label="Pido ayuda" title="Pido ayuda" aria-pressed="false">✋</button>
+    <div class="reply-field"><span class="reply-label" id="bar-label"></span><textarea id="bar-text" rows="1" placeholder="Escribe tu respuesta…"></textarea></div>
+    <button class="button reply-send" id="bar-send">Enviar</button>
+  </div>
+  <p class="reply-status" id="bar-status" hidden></p>
+</div>
 <dialog id="dialog" aria-labelledby="dialog-title" style="border:0;border-radius:18px;padding:26px;width:min(560px,92vw)">
   <div class="panel-head"><h2 id="dialog-title"></h2><button id="dialog-close" class="icon-button" aria-label="Cerrar">×</button></div>
   <div id="dialog-body"></div>
