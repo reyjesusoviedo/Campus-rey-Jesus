@@ -115,7 +115,7 @@
   // ---------- render ----------
   function render() {
     document.body.classList.toggle("teacher", S.teacher); document.body.classList.toggle("student", !S.teacher);
-    renderTop(); renderMain(); renderSide(); renderBottom(); renderTools(); updateBar();
+    renderTop(); renderMain(); renderSide(); renderBottom(); renderTools(); updateBar(); semaWidget();
     $("help-btn").hidden = true;
   }
   function liveBadge() {
@@ -141,7 +141,7 @@
       ${liveBadge()}
       ${S.teacher ? `<span class="clock" id="s-clock"></span>` : ""}
       <div class="r">
-        ${S.teacher ? `<span class="pill">${Object.keys(S.presence).length} conectados</span><span class="rt-dot" id="rt-dot" data-on="${S.rtStatus === "SUBSCRIBED"}"></span>` : ""}
+        ${S.teacher ? semaBarHtml() + `<span class="pill">${Object.keys(S.presence).length} conectados</span><span class="rt-dot" id="rt-dot" data-on="${S.rtStatus === "SUBSCRIBED"}"></span>` : ""}
         ${S.teacher && s.status !== "closed" ? `<button class="button secondary small" data-act="invite">Invitar</button>` : ""}
         ${!S.teacher ? `<button class="button secondary small" data-act="materials">📄 Material</button>` : ""}
         ${S.teacher ? videoLinkHtml() : ""}
@@ -575,6 +575,8 @@
     if (S.tab === "people") {
       const open = S.activities.find(a => a.status === "open" && !a.content?.auto); const answered = new Set((S.results[open?.id]?.items || []).map(i => i.user_id));
       const students = S.members.filter(m => m.role === "student" || m.role === "guest");
+      const order = { lost: 0, meh: 1, ok: 3 };
+      students.sort((a, b) => (order[S.reactions.find(r => r.user_id === a.user_id)?.value] ?? 2) - (order[S.reactions.find(r => r.user_id === b.user_id)?.value] ?? 2));
       const rows = students.map(m => { const on = !!S.presence[m.user_id], h = S.help.find(x => x.user_id === m.user_id); const rx = S.reactions.find(r => r.user_id === m.user_id); return `<li><span class="dot ${on ? "on" : ""}"></span><span>${esc(m.profile?.full_name || "")}${m.role === "guest" ? ` <span class="meta">(invitado)</span>` : ""}</span><span class="flags">${rx ? `<span class="rx rx-${rx.value}" title="${rx.value === "ok" ? "Voy bien" : rx.value === "meh" ? "Más o menos" : "No lo entiendo"}"></span>` : ""}${h ? `<span class="tag help">Pide ayuda</span><button class="button secondary small" data-resolve="${h.id}">Atendido</button>` : ""}${open && answered.has(m.user_id) ? `<span class="tag done">Respondió</span>` : ""}</span></li>`; });
       const guests = Object.values(S.presence).filter(p => !students.some(m => m.user_id === p.id) && p.id !== me.user.id).map(p => `<li><span class="dot on"></span><span>${esc(p.name)}</span><span class="meta" style="margin-left:auto">${esc(p.roleLabel)}</span></li>`);
       side.innerHTML = `<p class="meta" style="margin:0 0 8px">${Object.keys(S.presence).length} conectados · ${students.length} en el grupo</p>${semaforoHtml()}<ul class="presence">${rows.join("")}${guests.join("")}</ul>${S.help.filter(h => h.message).map(h => `<p class="live-answer" style="margin-top:10px"><strong>${esc(h.author?.full_name)}:</strong> ${esc(h.message)}</p>`).join("")}`;
@@ -803,12 +805,12 @@
         ${obj.length ? `<p class="meta" style="margin:0 0 8px">Objetivos · toca para marcar</p><ul class="obj">${obj.map((o, i) => `<li class="${o.done ? "ok" : ""}" data-obj="${i}"><i></i><span>${esc(o.text)}</span></li>`).join("")}</ul>` : `<p class="meta">Escribe los objetivos de la clase para marcarlos según avances.</p>`}</div>
       <div class="c-card"><h3>Material <button class="lk" data-add-mat>+ Añadir</button></h3>
         ${S.materials.length ? `<ul class="mat-list">${S.materials.map(m => `<li class="${m.visible ? "" : "hidden-m"}">${matIcon(m)}<div class="nm"><b>${esc(m.title)}</b><small>${pm === m.id ? "En pantalla" : m.visible ? "Visible para los alumnos" : "Oculto"}</small></div><div class="acts"><button class="button ${pm === m.id ? "" : "teal"} small" data-project="${m.id}">${pm === m.id ? "Quitar" : "Proyectar"}</button><button class="icon-button" title="Más" data-mat-menu="${m.id}">⋯</button></div></li>`).join("")}</ul>` : `<p class="meta">Sube la lección, un PDF, un texto o un enlace.</p>`}</div>
-      <div class="c-card"><h3>Nota rápida</h3><textarea class="notes" id="notes-quick" style="min-height:120px" placeholder="Solo la ves tú. Se guarda sola.">${esc(S.session.teacher_notes || "")}</textarea><p class="meta" id="notes-quick-st"></p></div>
+      <div class="c-card sema-card" id="sema-card"></div>
       <div class="c-card"><h3>Agenda del grupo <a class="lk" href="panel.html">Ver todas</a></h3>
         ${ag.length ? `<ul class="agenda">${ag.map(x => `<li class="${x.id === sessionId ? "now" : ""}"><b>${x.id === sessionId ? "Hoy" : fmtDate(x.starts_at, { day: "2-digit", month: "short" })}</b><div><a href="sesion.html?id=${x.id}">${esc(x.title)}</a><small>${x.status === "live" ? "En directo" : x.status === "closed" ? (x.recording_url ? "Grabada" : "Terminada") : "Programada · " + fmtDate(x.starts_at, { hour: "2-digit", minute: "2-digit" })}</small></div></li>`).join("")}</ul>` : `<p class="meta">Sin más clases programadas.</p>`}</div>`;
     const b = $("c-bottom");
     b.querySelector("[data-edit-obj]").addEventListener("click", objectivesDialog);
-    { const ta = b.querySelector("#notes-quick"); let t; ta.addEventListener("input", () => { clearTimeout(t); t = setTimeout(async () => { const { error } = await sb.from("sessions").update({ teacher_notes: ta.value }).eq("id", sessionId); b.querySelector("#notes-quick-st").textContent = error ? "No se pudo guardar" : "Guardado ✓"; S.session.teacher_notes = ta.value; }, 800); }); }
+    semaWidget();
     b.querySelector("[data-add-mat]").addEventListener("click", addMaterialDialog);
     b.querySelectorAll("[data-obj]").forEach(li => li.addEventListener("click", () => toggleObjective(Number(li.dataset.obj))));
     b.querySelectorAll("[data-mat-menu]").forEach(x => x.addEventListener("click", () => materialMenuDialog(S.materials.find(m => m.id === x.dataset.matMenu))));
@@ -876,6 +878,31 @@
 
   // ---- semáforo ----
   const rxCount = v => S.reactions.filter(r => r.value === v && S.presence[r.user_id]).length;
+  function semaWidget() {
+    if (!S.teacher) return;
+    const w = $("sema-card"); if (!w) return;
+    const present = id => !!S.presence[id];
+    const byName = v => S.reactions.filter(r => r.value === v && present(r.user_id)).map(r => (S.members.find(m => m.user_id === r.user_id)?.profile?.full_name || nameCache[r.user_id] || "Alumno/a").split(" ")[0]);
+    const ok = byName("ok"), meh = byName("meh"), lost = byName("lost"), total = Object.values(S.presence).filter(p => p.id !== me.user.id).length;
+    w.innerHTML = `<h3>¿Cómo van? <span class="meta" style="margin-left:auto;font-family:inherit;font-size:12px">${total} conectados</span></h3>
+      <div class="sema-big"><div class="ok"><span class="rx rx-ok"></span><b>${ok.length}</b><small>Voy bien</small></div><div class="meh"><span class="rx rx-meh"></span><b>${meh.length}</b><small>Más o menos</small></div><div class="lost"><span class="rx rx-lost"></span><b>${lost.length}</b><small>No entiendo</small></div></div>
+      <div class="sema-body">
+        ${lost.length ? `<p class="sema-row lost"><b>🔴 No lo entienden:</b> ${esc(lost.join(", "))}</p>` : ""}
+        ${meh.length ? `<p class="sema-row meh"><b>🟡 Más o menos:</b> ${esc(meh.join(", "))}</p>` : ""}
+        ${!lost.length && !meh.length ? `<p class="sema-row"><b>${ok.length ? "🟢 Todos bien" : "Sin respuestas todavía"}</b></p>` : ""}
+        <button class="button secondary small" data-sema-reset>Poner a cero</button>
+      </div>`;
+    w.querySelector("[data-sema-reset]").addEventListener("click", async () => { await sb.from("reactions").delete().eq("session_id", sessionId); refreshAll(true); });
+    // avisos al cambiar a rojo o amarillo
+    const seen = S.rxSeen || (S.rxSeen = {});
+    S.reactions.forEach(r => { const key = r.user_id + ":" + r.value + ":" + r.updated_at; if (!seen[r.user_id + ":" + r.updated_at] && (r.value === "lost" || r.value === "meh") && S.rxInit) { const n = (S.members.find(m => m.user_id === r.user_id)?.profile?.full_name || nameCache[r.user_id] || "Un alumno").split(" ")[0]; toast(`${r.value === "lost" ? "🔴" : "🟡"} ${n}: ${r.value === "lost" ? "no lo entiende" : "más o menos"}`); } seen[r.user_id + ":" + r.updated_at] = true; });
+    S.rxInit = true;
+  }
+  function semaBarHtml() {
+    const present = id => !!S.presence[id]; const c = v => S.reactions.filter(r => r.value === v && present(r.user_id)).length;
+    const t = c("ok") + c("meh") + c("lost"); if (!t) return "";
+    return `<span class="sema-bar" title="Cómo van los alumnos"><i class="ok" style="flex:${c("ok")}"></i><i class="meh" style="flex:${c("meh")}"></i><i class="lost" style="flex:${c("lost")}"></i></span>`;
+  }
   function semaforoHtml() { return `<div class="sema-sum"><span class="rx rx-ok"></span>${rxCount("ok")} <span class="rx rx-meh"></span>${rxCount("meh")} <span class="rx rx-lost"></span>${rxCount("lost")}</div>`; }
   async function setReaction(v) {
     const mine = S.reactions.find(r => r.user_id === me.user.id);
