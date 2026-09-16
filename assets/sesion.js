@@ -664,6 +664,14 @@
       interfaceConfigOverwrite: { SHOW_JITSI_WATERMARK: false, SHOW_WATERMARK_FOR_GUESTS: false, MOBILE_APP_PROMO: false, DEFAULT_REMOTE_DISPLAY_NAME: "Participante" }
     });
     if (S.teacher && Campus.cfg.teacherTileView) S.jitsi.addListener("videoConferenceJoined", () => { try { S.jitsi.executeCommand("setTileView", true); } catch {} });
+    if (!S.teacher) {
+      // el alumno ve siempre al maestro en grande
+      const tName = (nameCache[S.group.teacher_id] || "").trim().toLowerCase();
+      const pinTeacher = () => { try { const list = S.jitsi.getParticipantsInfo ? S.jitsi.getParticipantsInfo() : []; const t = list.find(p => (p.displayName || "").trim().toLowerCase() === tName); if (t) { S.jitsi.executeCommand("setTileView", false); S.jitsi.pinParticipant(t.participantId); } } catch {} };
+      S.jitsi.addListener("videoConferenceJoined", () => setTimeout(pinTeacher, 800));
+      S.jitsi.addListener("participantJoined", () => setTimeout(pinTeacher, 800));
+      S.jitsi.addListener("displayNameChange", () => setTimeout(pinTeacher, 300));
+    }
     S.jitsi.addListener("videoConferenceLeft", () => { S.jitsi?.dispose(); S.jitsi = null; S.jitsiEl = null; renderVideo(); });
   }
   function videoLinkHtml() {
@@ -851,6 +859,7 @@
       <button class="tb ${S.session.board_active ? "active" : ""}" data-act="board"><span>✎</span>Pizarra</button>
       <button class="tb" data-act="activity"><span>☑</span>Actividad</button>
       <button class="tb" data-act="objective"><span>⚑</span>Objetivo</button>
+      ${s.status !== "closed" ? `<button class="tb" data-act="invite"><span>👥</span>Invitar</button>` : ""}
       <div class="sema-tools" title="Cómo van los alumnos">${semaforoHtml()}</div>
       ${s.status === "scheduled" ? `<button class="tb start" data-act="start"><span>▶</span>Iniciar</button>` : s.status === "live" ? `<button class="tb end" data-act="end"><span>■</span>Terminar</button>` : `<button class="tb" data-act="summary"><span>📋</span>Resumen</button><button class="tb start" data-act="reopen"><span>↻</span>Reabrir</button><button class="tb" data-act="recording"><span>🎬</span>Grabación</button>`}`;
     t.querySelectorAll("[data-act]").forEach(b => b.addEventListener("click", () => sessionAction(b.dataset.act)));
