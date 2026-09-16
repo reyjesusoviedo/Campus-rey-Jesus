@@ -660,9 +660,10 @@
     S.jitsi = new JitsiMeetExternalAPI(Campus.cfg.jitsiDomain, {
       roomName: jitsiRoom(), parentNode: el, width: "100%", height: "100%", lang: "es",
       userInfo: { displayName: me.profile.full_name },
-      configOverwrite: { startWithAudioMuted: !S.teacher, startWithVideoMuted: !S.teacher, prejoinConfig: { enabled: false }, disableDeepLinking: true, toolbarButtons: S.teacher ? ["microphone", "camera", "desktop", "recording", "mute-everyone", "tileview", "settings", "hangup"] : ["microphone", "camera", "tileview", "hangup"], hideConferenceSubject: true, disableInviteFunctions: true, notifications: [] },
+      configOverwrite: { startWithAudioMuted: !S.teacher, startWithVideoMuted: !S.teacher && !Campus.cfg.studentsCameraOn, prejoinConfig: { enabled: false }, disableDeepLinking: true, toolbarButtons: S.teacher ? ["microphone", "camera", "desktop", "recording", "mute-everyone", "tileview", "settings", "hangup"] : ["microphone", "camera", "tileview", "hangup"], hideConferenceSubject: true, disableInviteFunctions: true, notifications: [] },
       interfaceConfigOverwrite: { SHOW_JITSI_WATERMARK: false, SHOW_WATERMARK_FOR_GUESTS: false, MOBILE_APP_PROMO: false, DEFAULT_REMOTE_DISPLAY_NAME: "Participante" }
     });
+    if (S.teacher && Campus.cfg.teacherTileView) S.jitsi.addListener("videoConferenceJoined", () => { try { S.jitsi.executeCommand("setTileView", true); } catch {} });
     S.jitsi.addListener("videoConferenceLeft", () => { S.jitsi?.dispose(); S.jitsi = null; S.jitsiEl = null; renderVideo(); });
   }
   function videoLinkHtml() {
@@ -680,7 +681,7 @@
     }
     if (S.session.status !== "live" && !S.teacher) { box.innerHTML = `<div class="video-card"><div><div class="face">👤</div><div class="name">${esc(teacherName())}</div><div class="hint">El vídeo aparecerá aquí cuando empiece la clase.</div></div></div>`; return; }
     if (S.jitsi) { const c = box.querySelector(".video-live"); if (c && S.jitsiEl && !c.contains(S.jitsiEl)) c.appendChild(S.jitsiEl); if (c) return; }
-    box.innerHTML = `<div class="video-card video-live" id="video-live"></div><p class="video-note">${S.teacher ? `Si el vídeo se queda en «esperando al moderador», <a target="_blank" rel="noopener" href="${jitsiUrl()}">ábrelo en una pestaña</a>, inicia sesión una vez y vuelve.` : `Si no ves a ${esc(teacherName())}, pulsa «Unirme al vídeo».`}</p>`;
+    box.innerHTML = `<div class="video-card video-live" id="video-live"></div><p class="video-note">${S.teacher ? (Campus.cfg.jitsiDomain === "meet.jit.si" ? `Si el vídeo se queda en «esperando al moderador», <a target="_blank" rel="noopener" href="${jitsiUrl()}">ábrelo en una pestaña</a>, inicia sesión una vez y vuelve.` : `Vídeo por ${esc(Campus.cfg.jitsiDomain)}. Botón de cuadrícula para ver a todos; «Pantalla completa» para ampliar.`) : `Si no ves a ${esc(teacherName())}, pulsa «Unirme al vídeo».`}</p>`;
     const live = box.querySelector("#video-live");
     if (!S.teacher && !S.videoJoined) { live.innerHTML = `<div><div class="face">👤</div><div class="name">${esc(teacherName())}</div><button class="button gold small" id="video-join">Unirme al vídeo</button></div>`; live.querySelector("#video-join").addEventListener("click", () => { S.videoJoined = true; live.innerHTML = ""; mountJitsi(live); }); return; }
     mountJitsi(live);
