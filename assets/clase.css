@@ -96,7 +96,16 @@ body.clase.teacher .c-main { padding-bottom: 24px; }
 body.clase.teacher .c-side { grid-template-rows: auto 1fr; }
 
 /* Alumno */
-body.clase.student .c-main { grid-template-columns: minmax(0, 1fr) 320px; grid-template-areas: "center side"; }
+body.clase.student .c-main { grid-template-columns: minmax(0, 1fr) 280px; grid-template-areas: "center side"; }
+body.clase.student .c-side { position: static; }
+.side-toggle { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 12px; font-weight: 800; color: var(--ink); cursor: pointer; justify-self: end; }
+body.clase.student.side-mini .c-main { grid-template-columns: 1fr; grid-template-areas: "center"; }
+body.clase.student.side-mini .c-side { position: fixed; right: 12px; bottom: 200px; width: 220px; z-index: 30; gap: 6px; }
+body.clase.student.side-mini .c-side .mat-card, body.clase.student.side-mini .c-side .answer-card { display: none; }
+body.clase.student.side-mini .video-card { min-height: 0; }
+body.clase.student.side-mini .jitsi-box { min-height: 150px; height: 150px; }
+body.clase.student.side-mini .video-note { display: none; }
+body.clase.student.side-mini .side-toggle { position: absolute; top: -34px; right: 0; }
 body.clase.student .c-bottom { display: none; }
 body.clase.student .c-side { background: transparent; display: grid; gap: 12px; grid-template-rows: none; overflow: visible; max-height: none; align-content: start; }
 body.clase.student .c-side #tabs { display: none; }
@@ -132,6 +141,8 @@ body.clase.student .reply-send { font-size: 16px; min-height: 50px; }
   .c-side { max-height: none; position: static; }
   .c-bottom { grid-template-columns: 1fr; }
   body.clase.student .c-main { grid-template-columns: 1fr; grid-template-areas: "side" "center"; }
+  body.clase.student.side-mini .c-side { bottom: 210px; width: 180px; }
+  body.clase.student.side-mini .jitsi-box { height: 120px; min-height: 120px; }
   body.clase.student .c-side { position: static; }
   .c-stage .stage-frame { height: 70vh; }
 }

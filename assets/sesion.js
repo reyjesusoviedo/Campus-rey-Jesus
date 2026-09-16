@@ -195,6 +195,7 @@
     container.appendChild(frame); S.stageFrame = frame;
     if (m.kind === "link") { frame.src = m.url; return; }
     if (/\.html?$/i.test(m.storage_path || "")) {
+      S.lessonReady = undefined; setTimeout(() => { if (S.lessonReady === undefined && S.stageFrame === frame) { S.lessonReady = false; refreshFollow(); } }, 4000);
       frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups allow-modals");
       if (!S.lessonCache[m.id]) { const { data, error } = await sb.storage.from("materials").download(m.storage_path); if (error) { container.innerHTML = `<p class="notice">No se pudo cargar la lección.</p>`; return; } S.lessonCache[m.id] = await data.text(); }
       frame.srcdoc = guardLesson(S.lessonCache[m.id]); return;
@@ -210,6 +211,7 @@
   }
   function followHtml() {
     if (S.teacher) return "";
+    if (S.lessonReady === false) return `<span class="follow-chip" style="background:#e9edf0;color:#566171" title="Esta lección no envía su posición">Lección sin seguimiento</span>`;
     return S.follow ? `<span class="follow-chip">● Vas con ${esc(teacherName())}</span>` : `<button class="follow-back" data-follow>↩ Volver con ${esc(teacherName())}</button>`;
   }
   function refreshFollow() { const el = $("follow-slot"); if (el) { el.innerHTML = followHtml(); el.querySelector("[data-follow]")?.addEventListener("click", () => { S.follow = true; refreshFollow(); gotoTeacherSection(true); }); } }
@@ -243,7 +245,7 @@
     if (a) { if (a.status !== "open") await sb.from("activities").update({ status: "open" }).eq("id", a.id); return; }
     await sb.from("activities").insert({ session_id: sessionId, kind: "submission", title: "Respuestas de la lección: " + m.title, status: "open", position: S.activities.length, content: { auto: true, material_id: m.id, prompt: "Respuestas escritas dentro de la lección «" + m.title + "»" } });
   }
-  const LESSON_GUARD = '<script>(function(){document.addEventListener("click",function(e){var a=e.target.closest&&e.target.closest("a[href]");if(!a)return;var h=a.getAttribute("href")||"";if(h.charAt(0)==="#"){e.preventDefault();var id=decodeURIComponent(h.slice(1));var el=id?document.getElementById(id):null;if(el)el.scrollIntoView({behavior:"smooth",block:"start"});else if(!id)window.scrollTo({top:0,behavior:"smooth"});}else if(/^https?:/i.test(h)){a.setAttribute("target","_blank");a.setAttribute("rel","noopener");}},true);document.addEventListener("submit",function(e){e.preventDefault();},true);})();</script>';
+  const LESSON_GUARD = '<script>(function(){var role=null;document.addEventListener(\"click\",function(e){var a=e.target.closest&&e.target.closest(\"a[href]\");if(!a)return;var h=a.getAttribute(\"href\")||\"\";if(h.charAt(0)===\"#\"){e.preventDefault();var id=decodeURIComponent(h.slice(1));var el=id?document.getElementById(id):null;if(el)el.scrollIntoView({behavior:\"smooth\",block:\"start\"});else if(!id)window.scrollTo({top:0,behavior:\"smooth\"});}else if(/^https?:/i.test(h)){a.setAttribute(\"target\",\"_blank\");a.setAttribute(\"rel\",\"noopener\");}},true);document.addEventListener(\"submit\",function(e){e.preventDefault();},true);window.addEventListener(\"message\",function(e){var d=e.data||{};if(d.campus!==\"campus\")return;if(d.type===\"context\")role=d.role;if(d.type===\"goto\"&&typeof d.section===\"string\"&&d.section.indexOf(\"scroll:\")===0){var r=parseFloat(d.section.slice(7))||0;var h=document.documentElement.scrollHeight-window.innerHeight;window.scrollTo({top:r*h,behavior:\"smooth\"});}});setTimeout(function(){if(window.CampusBridge)return;var t;window.addEventListener(\"scroll\",function(){if(role!==\"teacher\")return;clearTimeout(t);t=setTimeout(function(){var h=document.documentElement.scrollHeight-window.innerHeight;var r=h>0?window.scrollY/h:0;if(parent!==window)parent.postMessage({campus:\"lesson\",type:\"position\",section:\"scroll:\"+r.toFixed(3),label:\"Desplazamiento\"},\"*\");},250);},{passive:true});if(parent!==window)parent.postMessage({campus:\"lesson\",type:\"ready\",basic:true},\"*\");},700);})();</script>';
   function guardLesson(html) { return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, m => m + LESSON_GUARD) : LESSON_GUARD + html; }
   function postToLesson(msg) { try { S.stageFrame?.contentWindow?.postMessage(Object.assign({ campus: "campus" }, msg), "*"); } catch {} }
   function gotoTeacherSection(force) {
@@ -270,8 +272,8 @@
   window.addEventListener("message", async e => {
     const d = e.data || {}; if (d.campus !== "lesson" || !S.stageFrame || e.source !== S.stageFrame.contentWindow) return;
     const pm = projectedMaterial(); if (!pm) return;
-    if (d.type === "ready") { postToLesson({ type: "context", role: S.teacher ? "teacher" : "student", name: me.profile.full_name, follow: S.follow }); if (!S.teacher) setTimeout(() => gotoTeacherSection(true), 300); }
-    if (d.type === "position" && !S.teacher && d.section) {
+    if (d.type === "ready") { S.lessonBasic = !!d.basic; S.lessonReady = true; refreshFollow(); postToLesson({ type: "context", role: S.teacher ? "teacher" : "student", name: me.profile.full_name, follow: S.follow }); if (!S.teacher) setTimeout(() => gotoTeacherSection(true), 300); }
+    if (d.type === "position" && !S.teacher && d.section && !/^scroll:/.test(d.section)) {
       const ts = S.session.projected_state?.section;
       if (S.follow && ts && d.section !== ts && !S.gotoGuard) { S.follow = false; refreshFollow(); }
     }
@@ -588,7 +590,10 @@
     const visible = S.materials.filter(m => m.visible);
     $("tabs").innerHTML = "";
     const answered = S.questions.filter(q => q.user_id === me.user.id && q.answer && !(S.seenAnswers || []).includes(q.id));
-    const side = $("side"); if (!side.querySelector("#video-slot")) side.innerHTML = `<div id="video-slot"></div><div id="side-rest"></div>`;
+    const side = $("side"); if (!side.querySelector("#video-slot")) { side.innerHTML = `<button class="side-toggle" id="side-toggle" title="Reducir el vídeo"></button><div id="video-slot"></div><div id="side-rest"></div>`;
+      try { if (localStorage.getItem("side-mini") === "1") document.body.classList.add("side-mini"); } catch {}
+      const upd = () => { const mini = document.body.classList.contains("side-mini"); $("side-toggle").textContent = mini ? "⤢ Ampliar" : "⤡ Reducir"; };
+      $("side-toggle").addEventListener("click", () => { document.body.classList.toggle("side-mini"); try { localStorage.setItem("side-mini", document.body.classList.contains("side-mini") ? "1" : "0"); } catch {} upd(); }); upd(); }
     side.querySelector("#side-rest").innerHTML = `${answered.map(q => `<div class="c-card answer-card"><p class="eyebrow" style="margin:0">${esc(teacherName())} te responde</p><p class="q">${esc(q.text)}</p><p class="a">${esc(q.answer)}</p><button class="button secondary small" data-seen="${q.id}">Vale</button></div>`).join("")}
       <div class="c-card mat-card"><h3>Material de hoy</h3>${visible.length ? `<ul class="mat-list">${visible.map(m => `<li>${matIcon(m)}<div class="nm"><b>${esc(m.title)}</b></div><div class="acts">${matOpenBtn(m)}</div></li>`).join("")}</ul>` : `<p class="meta">${esc(teacherName())} aún no ha mostrado material.</p>`}</div>`;
     bindMaterials($("side"));
