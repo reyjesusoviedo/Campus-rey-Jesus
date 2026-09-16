@@ -209,8 +209,8 @@ body.has-bar .page, body.clase.student .c-main { padding-bottom: 190px; }
 .sum-list { margin: 0; padding-left: 18px; font-size: 14px; }
 @media print { body.print-summary > *:not(dialog) { display: none !important; } body.print-summary dialog { position: static; border: 0; width: auto; } body.print-summary .live-controls, body.print-summary #dialog-close { display: none; } }
 
-/* Proporciones "todo en pantalla" para el maestro en pantallas anchas */
-@media (min-width: 1101px) {
+/* Proporciones "todo en pantalla" para el maestro: ordenador y tablet en horizontal */
+@media (min-width: 1101px), (min-width: 900px) and (orientation: landscape) {
   body.clase.teacher { height: 100vh; overflow: hidden; }
   body.clase.teacher .c-main { height: calc(100vh - 62px - 62px); padding: 12px 16px 12px; gap: 12px;
     grid-template-columns: minmax(280px, 30%) minmax(0, 1fr) minmax(280px, 26%);
@@ -226,4 +226,24 @@ body.has-bar .page, body.clase.student .c-main { padding-bottom: 190px; }
   body.clase.teacher .c-bottom .c-card { min-height: 0; overflow: auto; }
   body.clase.teacher .c-tools { position: static; }
   body.clase.teacher .c-top { position: static; }
+}
+
+@media (min-width: 900px) and (max-width: 1100px) and (orientation: landscape) {
+  body.clase.teacher .c-main { grid-template-columns: minmax(240px, 28%) minmax(0, 1fr) minmax(240px, 26%); padding: 10px 12px; gap: 10px; }
+  body.clase.teacher .c-bottom .c-card { padding: 10px 12px; }
+  body.clase.teacher .c-bottom .c-card h3 { font-size: .95rem; }
+  body.clase.teacher .c-tabs button { padding: 6px 8px; font-size: 12px; }
+  body.clase.teacher .c-tools .tb { min-width: 62px; padding: 5px 8px; }
+  body.clase.teacher .c-top .clock { font-size: .95rem; }
+  body.clase.teacher .c-top { padding: 8px 12px; gap: 8px 12px; flex-wrap: nowrap; }
+  body.clase.teacher .c-top .brand span:last-child { display: none; }
+  body.clase.teacher .c-top .t p { display: none; }
+  body.clase.teacher .c-top .t h1 { font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body.clase.teacher .c-top .r { flex-wrap: nowrap; gap: 6px; }
+  body.clase.teacher .c-top .pill { display: none; }
+  body.clase.teacher .c-top .who .button { display: none; }
+  body.clase.teacher .c-top .button.small { padding: 6px 10px; font-size: 13px; }
+  body.clase.teacher .mat-list .nm small { display: none; }
+  body.clase.teacher .mat-list .acts .button.small { padding: 5px 8px; font-size: 12px; }
+  body.clase.teacher .c-main { height: calc(100vh - 50px - 58px); }
 }
