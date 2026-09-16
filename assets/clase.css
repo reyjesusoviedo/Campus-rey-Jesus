@@ -208,3 +208,22 @@ body.has-bar .page, body.clase.student .c-main { padding-bottom: 190px; }
 .sum h3 { font-size: .95rem; margin: 14px 0 4px; font-family: Georgia, serif; }
 .sum-list { margin: 0; padding-left: 18px; font-size: 14px; }
 @media print { body.print-summary > *:not(dialog) { display: none !important; } body.print-summary dialog { position: static; border: 0; width: auto; } body.print-summary .live-controls, body.print-summary #dialog-close { display: none; } }
+
+/* Proporciones "todo en pantalla" para el maestro en pantallas anchas */
+@media (min-width: 1101px) {
+  body.clase.teacher { height: 100vh; overflow: hidden; }
+  body.clase.teacher .c-main { height: calc(100vh - 62px - 62px); padding: 12px 16px 12px; gap: 12px;
+    grid-template-columns: minmax(280px, 30%) minmax(0, 1fr) minmax(280px, 26%);
+    grid-template-rows: minmax(0, 1.55fr) minmax(0, 1fr); grid-template-areas: "video center side" "bottom bottom bottom"; align-content: stretch; overflow: hidden; }
+  body.clase.teacher .c-video { min-height: 0; grid-template-rows: minmax(0, 1fr) auto; }
+  body.clase.teacher .c-video .video-card, body.clase.teacher .c-video .jitsi-box { height: 100%; min-height: 0; }
+  body.clase.teacher .c-center { min-height: 0; grid-template-rows: auto minmax(0, 1fr); }
+  body.clase.teacher .c-stage { min-height: 0; overflow: auto; padding: 12px 16px; }
+  body.clase.teacher .c-stage .stage { min-height: 0; height: calc(100% - 46px); }
+  body.clase.teacher .c-stage .stage-frame { height: 100%; min-height: 0; }
+  body.clase.teacher .c-side { max-height: none; position: static; min-height: 0; }
+  body.clase.teacher .c-bottom { min-height: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  body.clase.teacher .c-bottom .c-card { min-height: 0; overflow: auto; }
+  body.clase.teacher .c-tools { position: static; }
+  body.clase.teacher .c-top { position: static; }
+}
