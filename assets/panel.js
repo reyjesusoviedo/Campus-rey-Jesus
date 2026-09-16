@@ -71,6 +71,17 @@
     app.querySelectorAll("[data-invite]").forEach(b => b.addEventListener("click", () => inviteDialog(groups.find(g => g.id === b.dataset.invite))));
     app.querySelectorAll("[data-new-session]").forEach(b => b.addEventListener("click", () => newSessionDialog(groups.find(g => g.id === b.dataset.newSession))));
     app.querySelectorAll("[data-members]").forEach(b => b.addEventListener("click", () => membersDialog(groups.find(g => g.id === b.dataset.members))));
+    app.querySelectorAll("[data-del-session]").forEach(b => b.addEventListener("click", async () => {
+      if (!confirm(`¿Borrar la clase «${b.dataset.title}»? Se borrarán sus actividades, respuestas y material.`)) return;
+      const { error } = await sb.from("sessions").delete().eq("id", b.dataset.delSession);
+      if (error) { toast("No se pudo borrar: " + error.message); return; } toast("Clase borrada"); load();
+    }));
+    app.querySelectorAll("[data-del-group]").forEach(b => b.addEventListener("click", async () => {
+      const name = b.dataset.title;
+      if (prompt(`Vas a borrar el grupo «${name}» con todas sus clases, alumnos y respuestas. Escribe BORRAR para confirmar:`) !== "BORRAR") return;
+      const { error } = await sb.from("groups").delete().eq("id", b.dataset.delGroup);
+      if (error) { toast("No se pudo borrar: " + error.message); return; } toast("Grupo borrado"); load();
+    }));
   }
 
   function groupCard(g) {
@@ -84,6 +95,7 @@
         ${g.description ? `<p class="subtle" style="margin:8px 0 0;font-size:14px">${esc(g.description)}</p>` : ""}
       </div>
       <div class="actions">
+        ${(role === "coordinator" || g.teacher_id === me.user.id) ? `<button class="icon-button" title="Borrar grupo" data-del-group="${g.id}" data-title="${esc(g.name)}">🗑</button>` : ""}
         ${g.zoom_url ? `<a class="button secondary small" target="_blank" rel="noopener" href="${esc(g.zoom_url)}">Zoom del grupo</a>` : ""}
         ${canManage ? `<button class="button secondary small" data-members="${g.id}">Alumnos</button><button class="button secondary small" data-invite="${g.id}">Invitar</button><button class="button small" data-new-session="${g.id}">Nueva clase</button>` : ""}
       </div></div>
@@ -92,6 +104,7 @@
           <span class="title">${esc(s.title)}</span>
           ${statusTag(s)}
           <a class="button secondary small" href="sesion.html?id=${s.id}">${s.status === "closed" ? "Ver" : "Entrar"}</a>
+          ${canManage ? `<button class="icon-button" title="Borrar clase" data-del-session="${s.id}" data-title="${esc(s.title)}">🗑</button>` : ""}
         </li>`).join("")}</ul>` : `<p class="meta" style="margin:16px 0 0">Aún no hay clases programadas.</p>`}
     </article>`;
   }

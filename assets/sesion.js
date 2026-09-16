@@ -177,6 +177,7 @@
     if (act === "objective") { await toggleNextObjective(); return; }
     if (act === "board") { if (S.session.board_active) { await toggleBoard(false); } else { S.ctab = "board"; renderMain(); } return; }
     if (act === "summary") { summaryDialog(); return; }
+    if (act === "delete-session") { if (!confirm(`¿Borrar la clase «${S.session.title}»? Se borrarán sus actividades, respuestas y material.`)) return; const { error } = await sb.from("sessions").delete().eq("id", sessionId); if (error) { toast("No se pudo borrar: " + error.message); return; } location.replace("panel.html"); return; }
     if (act === "quick") { quickDialog(); return; }
     if (act === "quick-close") { const q = openQuick(); if (q) { await sb.from("activities").update({ status: "closed" }).eq("id", q.id); log("activity_closed", { activity_id: q.id }); toast("Pregunta cerrada"); refreshAll(true); } return; }
     if (act === "reopen") { await sb.from("sessions").update({ status: "live" }).eq("id", sessionId); toast("Clase reabierta"); refreshAll(true); }
@@ -866,7 +867,7 @@
       <button class="tb" data-act="objective"><span>⚑</span>Objetivo</button>
       ${s.status !== "closed" ? `<button class="tb" data-act="invite"><span>👥</span>Invitar</button>` : ""}
       <div class="sema-tools" title="Cómo van los alumnos">${semaforoHtml()}</div>
-      ${s.status === "scheduled" ? `<button class="tb start" data-act="start"><span>▶</span>Iniciar</button>` : s.status === "live" ? `<button class="tb end" data-act="end"><span>■</span>Terminar</button>` : `<button class="tb" data-act="summary"><span>📋</span>Resumen</button><button class="tb start" data-act="reopen"><span>↻</span>Reabrir</button><button class="tb" data-act="recording"><span>🎬</span>Grabación</button>`}`;
+      ${s.status === "scheduled" ? `<button class="tb start" data-act="start"><span>▶</span>Iniciar</button>` : s.status === "live" ? `<button class="tb end" data-act="end"><span>■</span>Terminar</button>` : `<button class="tb" data-act="summary"><span>📋</span>Resumen</button><button class="tb start" data-act="reopen"><span>↻</span>Reabrir</button><button class="tb" data-act="recording"><span>🎬</span>Grabación</button><button class="tb" data-act="delete-session"><span>🗑</span>Borrar</button>`}`;
     t.querySelectorAll("[data-act]").forEach(b => b.addEventListener("click", () => sessionAction(b.dataset.act)));
   }
 
