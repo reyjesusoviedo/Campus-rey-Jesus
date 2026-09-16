@@ -884,14 +884,18 @@
     const present = id => !!S.presence[id];
     const byName = v => S.reactions.filter(r => r.value === v && present(r.user_id)).map(r => (S.members.find(m => m.user_id === r.user_id)?.profile?.full_name || nameCache[r.user_id] || "Alumno/a").split(" ")[0]);
     const ok = byName("ok"), meh = byName("meh"), lost = byName("lost"), total = Object.values(S.presence).filter(p => p.id !== me.user.id).length;
+    const lbl = { ok: "Voy bien", meh: "Más o menos", lost: "No lo entiendo" }, ic = { ok: "🟢", meh: "🟡", lost: "🔴" };
     w.innerHTML = `<h3>¿Cómo van? <span class="meta" style="margin-left:auto;font-family:inherit;font-size:12px">${total} conectados</span></h3>
-      <div class="sema-big"><div class="ok"><span class="rx rx-ok"></span><b>${ok.length}</b><small>Voy bien</small></div><div class="meh"><span class="rx rx-meh"></span><b>${meh.length}</b><small>Más o menos</small></div><div class="lost"><span class="rx rx-lost"></span><b>${lost.length}</b><small>No entiendo</small></div></div>
-      <div class="sema-body">
-        ${lost.length ? `<p class="sema-row lost"><b>🔴 No lo entienden:</b> ${esc(lost.join(", "))}</p>` : ""}
-        ${meh.length ? `<p class="sema-row meh"><b>🟡 Más o menos:</b> ${esc(meh.join(", "))}</p>` : ""}
-        ${!lost.length && !meh.length ? `<p class="sema-row"><b>${ok.length ? "🟢 Todos bien" : "Sin respuestas todavía"}</b></p>` : ""}
-        <button class="button secondary small" data-sema-reset>Poner a cero</button>
-      </div>`;
+      <div class="sema-big">${["ok", "meh", "lost"].map(v => `<button class="${v}" data-sema-list="${v}" title="Ver quién lo ha marcado"><span class="rx rx-${v}"></span><b>${byName(v).length}</b><small>${lbl[v]}</small></button>`).join("")}</div>
+      <div class="sema-body"><p class="meta" style="margin:0">Toca un color para ver quiénes son y ponerlo a cero cuando lo hayas atendido.</p><button class="button secondary small" data-sema-reset>Poner todo a cero</button></div>`;
+    w.querySelectorAll("[data-sema-list]").forEach(b => b.addEventListener("click", () => {
+      const v = b.dataset.semaList;
+      const rows = S.reactions.filter(r => r.value === v && present(r.user_id)).map(r => ({ id: r.user_id, name: S.members.find(m => m.user_id === r.user_id)?.profile?.full_name || nameCache[r.user_id] || "Alumno/a", at: r.updated_at }));
+      openDialog(`${ic[v]} ${lbl[v]}`, rows.length ? `<ul class="members">${rows.map(x => `<li><span style="flex:1">${esc(x.name)}<br><small class="meta">${fmtDate(x.at, { hour: "2-digit", minute: "2-digit" })}</small></span><button class="button secondary small" data-clear-one="${x.id}">Atendido</button></li>`).join("")}</ul><div class="live-controls"><button class="button" data-clear-color="${v}">Atendidos todos · poner a cero</button></div>` : `<p class="subtle">Nadie ha marcado «${lbl[v]}» ahora mismo.</p>`, d => {
+        d.querySelectorAll("[data-clear-one]").forEach(x => x.addEventListener("click", async () => { await sb.from("reactions").delete().match({ session_id: sessionId, user_id: x.dataset.clearOne }); dialog.close(); refreshAll(true); }));
+        d.querySelector("[data-clear-color]")?.addEventListener("click", async () => { await sb.from("reactions").delete().eq("session_id", sessionId).eq("value", v); dialog.close(); refreshAll(true); });
+      });
+    }));
     w.querySelector("[data-sema-reset]").addEventListener("click", async () => { await sb.from("reactions").delete().eq("session_id", sessionId); refreshAll(true); });
     // avisos al cambiar a rojo o amarillo
     const seen = S.rxSeen || (S.rxSeen = {});
