@@ -20,10 +20,15 @@ body.clase .skip-link { position: absolute; left: -999px; }
 .c-top .who .avatar { width: 30px; height: 30px; font-size: 11px; }
 
 .c-main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; grid-template-areas: "center side" "bottom bottom"; gap: 14px; padding: 14px 18px; flex: 1; align-content: start; }
+body.clase.teacher .c-main { grid-template-columns: minmax(300px, 30%) minmax(0, 1fr) 340px; grid-template-areas: "video center side" "bottom bottom bottom"; }
+.c-video { grid-area: video; padding: 0 !important; display: grid; align-content: start; gap: 6px; }
+.c-video .video-card, .c-video .jitsi-box { min-height: 320px; height: min(52vh, 480px); border-radius: 14px; }
+.c-video .video-note { margin: 0 2px; }
 .c-center { grid-area: center; background: #fff; border-radius: 14px; display: grid; grid-template-rows: auto 1fr; overflow: hidden; min-height: 60vh; }
 .c-side { grid-area: side; background: #fff; border-radius: 14px; display: grid; grid-template-rows: auto 1fr; overflow: hidden; max-height: calc(100vh - 120px); position: sticky; top: 70px; }
 .c-side-body { overflow: auto; padding: 14px; }
 .c-bottom { grid-area: bottom; display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 14px; }
+.c-center { min-height: 0; }
 .c-tabs { display: flex; gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--line); align-items: center; flex-wrap: wrap; }
 .c-tabs:empty { display: none; }
 .c-tabs button { border: 0; background: transparent; padding: 7px 10px; border-radius: 9px; font: inherit; font-size: 13px; font-weight: 700; color: var(--muted); cursor: pointer; }
@@ -33,6 +38,8 @@ body.clase .skip-link { position: absolute; left: -999px; }
 .c-stage { padding: 18px 22px; overflow: auto; }
 .c-stage .stage { min-height: 55vh; }
 .c-stage .stage-frame { height: calc(100vh - 260px); min-height: 420px; }
+body.clase.teacher .c-stage .stage-frame { height: min(56vh, 560px); min-height: 360px; }
+body.clase.teacher .c-center { min-height: 0; }
 
 .c-card { background: #fff; border-radius: 14px; padding: 14px 16px; }
 .c-card h3 { font-family: Georgia, serif; font-size: 1.05rem; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
@@ -86,7 +93,7 @@ body.clase .skip-link { position: absolute; left: -999px; }
 .c-tools .tb.start { background: var(--teal-dark); margin-left: auto; }
 .c-tools .tb:disabled { opacity: .45; cursor: not-allowed; }
 body.clase.teacher .c-main { padding-bottom: 24px; }
-body.clase.teacher .c-side { grid-template-rows: auto auto 1fr; }
+body.clase.teacher .c-side { grid-template-rows: auto 1fr; }
 
 /* Alumno */
 body.clase.student .c-main { grid-template-columns: minmax(0, 1fr) 320px; grid-template-areas: "center side"; }
@@ -120,6 +127,8 @@ body.clase.student .reply-send { font-size: 16px; min-height: 50px; }
 /* Tablet vertical */
 @media (max-width: 1100px) {
   .c-main { grid-template-columns: 1fr; grid-template-areas: "center" "side" "bottom"; }
+  body.clase.teacher .c-main { grid-template-columns: 1fr 1fr; grid-template-areas: "video side" "center center" "bottom bottom"; }
+  .c-video .video-card, .c-video .jitsi-box { min-height: 220px; height: 34vh; }
   .c-side { max-height: none; position: static; }
   .c-bottom { grid-template-columns: 1fr; }
   body.clase.student .c-main { grid-template-columns: 1fr; grid-template-areas: "side" "center"; }
@@ -133,6 +142,7 @@ body.clase.student .reply-send { font-size: 16px; min-height: 50px; }
   .c-top .t h1 { font-size: 1rem; }
   .c-top .clock { display: none; }
   .c-main { padding: 10px; gap: 10px; }
+  body.clase.teacher .c-main { grid-template-columns: 1fr; grid-template-areas: "video" "center" "side" "bottom"; }
   .c-stage { padding: 12px; }
   .c-tools { gap: 6px; padding-left: 10px; padding-right: 10px; }
   .c-tools .tb { min-width: 0; flex: 1; padding: 6px 4px; font-size: 10px; }

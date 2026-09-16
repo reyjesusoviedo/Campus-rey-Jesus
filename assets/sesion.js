@@ -549,7 +549,7 @@
     const tabs = [["chat", "Chat"], ["people", "Participantes"], ["notes", "Notas"]];
     if (!S.tab || !tabs.some(t => t[0] === S.tab)) S.tab = "chat";
     const pending = S.questions.filter(q => q.status === "pending").length, helping = S.help.length;
-    let vs = $("video-slot"); if (!vs) { vs = document.createElement("div"); vs.id = "video-slot"; vs.className = "teacher-video"; $("c-side").prepend(vs); }
+    let vs = $("video-slot"); if (!vs) { vs = document.createElement("div"); vs.id = "video-slot"; vs.className = "teacher-video c-video"; $("c-center").before(vs); }
     renderVideo();
     $("tabs").innerHTML = tabs.map(([k, l]) => `<button data-tab="${k}" aria-pressed="${S.tab === k}">${l}${k === "chat" && pending ? ` (${pending})` : ""}${k === "people" && helping ? ` (${helping}!)` : ""}</button>`).join("");
     $("tabs").querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => { S.tab = b.dataset.tab; renderSide(); }));
