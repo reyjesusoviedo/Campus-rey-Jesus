@@ -52,7 +52,7 @@
     const vals = Array.isArray(st.values_strip) ? st.values_strip : [];
     const weeks = d => d >= 14 ? Math.round(d / 7) + " semanas" : d + " días";
     app0.innerHTML = `
-      <section class="hero ${st.hero_image ? "custom" : ""}" ${st.hero_image ? `style="background-image:url('${heroImg}')"` : ""}><div class="txt"><h1>${esc(st.hero_line1 || "")}<span class="l2">${esc(st.hero_line2 || "")}</span></h1><p class="sub">${esc(st.hero_sub || "")}</p>
+      <section class="hero ${st.hero_image ? "custom" : "orig"}" ${st.hero_image ? `style="background-image:url('${heroImg}')"` : ""}>${st.hero_image ? "" : `<a class="hot a" href="#cursos">Explorar cursos gratuitos</a><a class="hot b" href="entrar.html">Entrar al campus</a>`}<div class="txt"><h1>${esc(st.hero_line1 || "")}<span class="l2">${esc(st.hero_line2 || "")}</span></h1><p class="sub">${esc(st.hero_sub || "")}</p>
         <div class="cta"><a class="btn green" href="#cursos">${ico("cap", 22)} Explorar cursos gratuitos</a><a class="btn outline" href="entrar.html">Entrar al campus</a></div>
         <div class="points">${points.map((p, i) => `<span>${ico(pIcons[i % 3], 18)} ${esc(p)}</span>`).join("")}</div></div>
 </section>
