@@ -3,16 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Campus · Cursos gratuitos</title>
+<title>Campus Rey Jesús Oviedo · Formación · Comunidad · Impacto</title>
 <meta name="description" content="Cursos gratuitos con lecciones interactivas y clases en directo.">
 <link rel="stylesheet" href="assets/styles.css">
 <link rel="stylesheet" href="assets/piloto.css">
 <link rel="stylesheet" href="assets/inicio.css">
 </head>
 <body class="site">
-<header class="s-top"><a class="brand" href="index.html" data-brand></a><nav><a class="button secondary small" href="entrar.html">Entrar</a><a class="button small" href="#cursos">Ver cursos</a></nav></header>
+<header class="s-top" id="top"><a class="brand" href="index.html" data-brand></a><button class="menu-btn" id="menu-btn" aria-label="Menú">☰</button><nav id="nav"></nav><a class="enter" href="entrar.html"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.4 0-8 2.2-8 5v2h16v-2c0-2.8-3.6-5-8-5Z"/></svg>Entrar al campus</a></header>
 <main id="app"><p class="meta" style="padding:40px;text-align:center">Cargando…</p></main>
 <footer class="s-foot" id="foot"></footer>
+<dialog class="soon-dialog" id="soon"><h3 id="soon-title">Próximamente</h3><p>Estamos preparando esta sección. Mientras tanto, echa un vistazo a los cursos.</p><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><a class="btn green" href="#cursos" id="soon-go">Ver cursos</a><button class="btn outline" style="color:#0b2f6b;border-color:#0b2f6b" id="soon-close">Cerrar</button></div></dialog>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="assets/config.js"></script>
 <script src="assets/db.js"></script>
