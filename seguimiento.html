@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seguimiento · Campus</title>
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="stylesheet" href="assets/piloto.css">
+<link rel="stylesheet" href="assets/clase.css">
+<link rel="stylesheet" href="assets/escritorio.css">
+<link rel="stylesheet" href="assets/shell.css">
+<link rel="stylesheet" href="assets/resumen.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar"></aside>
+  <div class="workspace">
+    <header class="topbar"></header>
+    <main class="page esc-page" id="contenido"><p id="loading" class="meta">Cargando…</p><div id="app" hidden></div></main>
+  </div>
+</div>
+<dialog id="dialog" aria-labelledby="dialog-title" style="border:0;border-radius:18px;padding:26px;width:min(560px,92vw)">
+  <div class="panel-head"><h2 id="dialog-title"></h2><button id="dialog-close" class="icon-button" aria-label="Cerrar">×</button></div>
+  <div id="dialog-body"></div>
+</dialog>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/db.js"></script>
+<script src="assets/shell.js"></script>
+<script src="assets/seguimiento.js"></script>
+</body>
+</html>

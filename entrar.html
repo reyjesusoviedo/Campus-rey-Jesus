@@ -66,7 +66,7 @@
       document.getElementById("name").value = info.full_name || ""; document.getElementById("email").value = info.email || "";
       document.querySelector(".auth-card h1").textContent = "Bienvenido al equipo";
       document.getElementById("hint").innerHTML = `Te han dado de alta como <strong>${info.role === "coordinator" ? "coordinación" : "maestro/a"}</strong>${info.group ? " del grupo <strong>" + info.group + "</strong>" : ""}.${info.message ? "<br>«" + info.message + "»" : ""}<br>Pulsa el botón: recibirás un enlace en tu correo y al abrirlo ya estarás dentro con tu rol.`;
-      const { data: { session: cur } } = await sb.auth.getSession(); if (cur) { location.replace("escritorio.html"); return; }
+      const { data: { session: cur } } = await sb.auth.getSession(); if (cur) { location.replace("resumen.html"); return; }
     }
   }
   const preCode = new URLSearchParams(location.search).get("clase");
