@@ -48,10 +48,10 @@
     if (m.kind === "link") { frame.src = m.url; return; }
     if (/\.html?$/i.test(m.storage_path || "")) {
       frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
-      if (!cache[m.id]) { const { data, error } = await sb.storage.from("materials").download(m.storage_path); if (error) { stage.innerHTML = `<p class="notice">No se pudo cargar la lección.</p>`; return; } cache[m.id] = await data.text(); }
+      if (!cache[m.id]) { const { data, error } = await sb.storage.from(m.bucket || "materials").download(m.storage_path); if (error) { stage.innerHTML = `<p class="notice">No se pudo cargar la lección.</p>`; return; } cache[m.id] = await data.text(); }
       frame.srcdoc = guardLesson(cache[m.id]); return;
     }
-    const { data, error } = await sb.storage.from("materials").createSignedUrl(m.storage_path, 3600);
+    const { data, error } = await sb.storage.from(m.bucket || "materials").createSignedUrl(m.storage_path, 3600);
     if (error) { stage.innerHTML = `<p class="notice">No se pudo cargar el archivo.</p>`; return; }
     frame.src = data.signedUrl;
   }

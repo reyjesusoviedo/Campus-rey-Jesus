@@ -3,9 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mis grupos · Campus Rey Jesús Oviedo</title>
+<title>Biblioteca · Campus Rey Jesús Oviedo</title>
 <link rel="stylesheet" href="assets/styles.css">
 <link rel="stylesheet" href="assets/piloto.css">
+<link rel="stylesheet" href="assets/clase.css">
+<link rel="stylesheet" href="assets/biblioteca.css">
 </head>
 <body>
 <a class="skip-link" href="#contenido">Saltar al contenido</a>
@@ -14,25 +16,25 @@
     <a class="brand" href="panel.html" data-brand></a>
     <nav class="nav-list">
       <a class="nav-link" data-nav="panel" href="panel.html">Mis grupos</a>
-      <a class="nav-link" data-nav="biblioteca" href="biblioteca.html" data-staff-only>Biblioteca</a>
+      <a class="nav-link" data-nav="biblioteca" href="biblioteca.html">Biblioteca</a>
     </nav>
     <div class="sidebar-foot" data-profile></div>
   </aside>
   <div class="workspace">
-    <header class="topbar"><button class="menu-button" data-menu aria-label="Abrir menú">☰</button><strong>Mis grupos</strong></header>
+    <header class="topbar"><button class="menu-button" data-menu aria-label="Abrir menú">☰</button><strong>Biblioteca</strong></header>
     <main class="page" id="contenido">
       <p id="loading" class="meta">Cargando…</p>
       <div id="app" hidden></div>
     </main>
   </div>
 </div>
-<dialog id="dialog" aria-labelledby="dialog-title" style="border:0;border-radius:18px;padding:26px;width:min(520px,92vw)">
+<dialog id="dialog" aria-labelledby="dialog-title" style="border:0;border-radius:18px;padding:26px;width:min(560px,92vw)">
   <div class="panel-head"><h2 id="dialog-title"></h2><button id="dialog-close" class="icon-button" aria-label="Cerrar">×</button></div>
   <div id="dialog-body"></div>
 </dialog>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="assets/config.js"></script>
 <script src="assets/db.js"></script>
-<script src="assets/panel.js"></script>
+<script src="assets/biblioteca.js"></script>
 </body>
 </html>
