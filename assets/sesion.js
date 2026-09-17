@@ -142,6 +142,7 @@
       ${S.teacher ? `<span class="clock" id="s-clock"></span>` : ""}
       <div class="r">
         ${S.teacher ? semaBarHtml() + `<span class="pill">${Object.keys(S.presence).length} conectados</span><span class="rt-dot" id="rt-dot" data-on="${S.rtStatus === "SUBSCRIBED"}"></span>` : ""}
+        ${S.teacher ? `<a class="button secondary small" href="biblioteca.html" target="_blank" title="Biblioteca de material">📚</a>` : ""}
         ${S.teacher && s.status !== "closed" ? `<button class="button secondary small" data-act="invite">Invitar</button>` : ""}
         ${!S.teacher ? `<button class="button secondary small" data-act="materials">📄 Material</button>` : ""}
         ${S.teacher ? videoLinkHtml() : ""}
@@ -198,10 +199,10 @@
     if (/\.html?$/i.test(m.storage_path || "")) {
       S.lessonReady = undefined; setTimeout(() => { if (S.lessonReady === undefined && S.stageFrame === frame) { S.lessonReady = false; refreshFollow(); } }, 4000);
       frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups allow-modals");
-      if (!S.lessonCache[m.id]) { const { data, error } = await sb.storage.from("materials").download(m.storage_path); if (error) { container.innerHTML = `<p class="notice">No se pudo cargar la lección.</p>`; return; } S.lessonCache[m.id] = await data.text(); }
+      if (!S.lessonCache[m.id]) { const { data, error } = await sb.storage.from(m.bucket || "materials").download(m.storage_path); if (error) { container.innerHTML = `<p class="notice">No se pudo cargar la lección.</p>`; return; } S.lessonCache[m.id] = await data.text(); }
       frame.srcdoc = guardLesson(S.lessonCache[m.id]); return;
     }
-    const { data, error } = await sb.storage.from("materials").createSignedUrl(m.storage_path, 3600);
+    const { data, error } = await sb.storage.from(m.bucket || "materials").createSignedUrl(m.storage_path, 3600);
     if (error) { container.innerHTML = `<p class="notice">No se pudo cargar el archivo.</p>`; return; }
     frame.src = data.signedUrl;
   }
@@ -612,7 +613,7 @@
   function materialsHtml(list, manage) {
     return `<ul class="materials-list">${list.map(m => `<li class="${m.visible ? "" : "hidden-m"}"><div class="row"><strong>${esc(m.title)}</strong>
       ${m.kind === "link" ? `<a class="button secondary small" target="_blank" rel="noopener" href="${esc(m.url)}">Abrir</a>` : ""}
-      ${m.kind === "file" ? `<a class="button secondary small" href="#" data-file="${esc(m.storage_path)}" data-bucket="materials">Abrir</a>` : ""}
+      ${m.kind === "file" ? `<a class="button secondary small" href="#" data-file="${esc(m.storage_path)}" data-bucket="${esc(m.bucket || "materials")}">Abrir</a>` : ""}
       ${manage ? `<button class="button ${S.session.projected_material_id === m.id ? "" : "teal"} small" data-project="${m.id}">${S.session.projected_material_id === m.id ? "Quitar" : "Proyectar"}</button><button class="button secondary small" data-toggle="${m.id}" data-visible="${m.visible}">${m.visible ? "Ocultar" : "Mostrar"}</button><button class="button secondary small" data-del="${m.id}">Borrar</button>` : ""}</div>
       ${m.kind === "text" ? `<div class="material-text">${esc(m.content)}</div>` : ""}</li>`).join("")}</ul>`;
   }
@@ -794,7 +795,7 @@
 
   // ---- tarjetas inferiores (maestro) ----
   function matIcon(m) { const k = m.kind === "link" ? "link" : /\.html?$/i.test(m.storage_path || "") ? "html" : /\.pdf$/i.test(m.storage_path || "") ? "pdf" : /\.(png|jpe?g|gif|webp)$/i.test(m.storage_path || "") ? "img" : "txt"; const lbl = { link: "WEB", html: "HTML", pdf: "PDF", img: "IMG", txt: "TXT" }[k]; return `<span class="ic ${k}">${lbl}</span>`; }
-  function matOpenBtn(m) { return m.kind === "link" ? `<a class="button secondary small" target="_blank" rel="noopener" href="${esc(m.url)}">Abrir</a>` : m.kind === "file" ? `<a class="button secondary small" href="#" data-file="${esc(m.storage_path)}" data-bucket="materials">Abrir</a>` : `<button class="button secondary small" data-text="${m.id}">Leer</button>`; }
+  function matOpenBtn(m) { return m.kind === "link" ? `<a class="button secondary small" target="_blank" rel="noopener" href="${esc(m.url)}">Abrir</a>` : m.kind === "file" ? `<a class="button secondary small" href="#" data-file="${esc(m.storage_path)}" data-bucket="${esc(m.bucket || "materials")}">Abrir</a>` : `<button class="button secondary small" data-text="${m.id}">Leer</button>`; }
   async function loadAgenda() { const { data } = await sb.from("sessions").select("id, title, starts_at, status, recording_url").eq("group_id", S.group.id).order("starts_at"); S.agenda = data || []; }
   function renderBottom() {
     if (!S.teacher) { $("c-bottom").innerHTML = ""; return; }
@@ -824,14 +825,24 @@
       d.querySelector("#obj-save").addEventListener("click", async () => { const old = S.session.objectives || []; const list = d.querySelector("#obj-text").value.split("\n").map(t => t.trim()).filter(Boolean).map(t => ({ text: t, done: !!old.find(o => o.text === t && o.done) })); await saveObjectives(list); dialog.close(); });
     });
   }
-  function addMaterialDialog() {
-    openDialog("Añadir material", `<div class="inline-form">
+  async function libraryPickDialog() {
+    const { data, error } = await sb.from("library_items").select("*").order("updated_at", { ascending: false });
+    if (error) { toast("La biblioteca no está disponible: " + error.message); return; }
+    const items = data || []; let q = "";
+    const render = d => { const t = q.toLowerCase(); const list = items.filter(i => !t || (i.title + " " + i.folder + " " + i.tags.join(" ")).toLowerCase().includes(t)); d.querySelector("#lp-list").innerHTML = list.length ? list.map(i => `<li><b>${esc(i.title)}</b><small>${esc(i.folder)}</small><button class="button teal small" data-pick="${i.id}">Añadir</button></li>`).join("") : `<li><span class="meta">Nada encontrado.</span></li>`;
+      d.querySelectorAll("[data-pick]").forEach(b => b.addEventListener("click", async () => { const i = items.find(x => x.id === b.dataset.pick); const { error } = await sb.from("materials").insert({ session_id: sessionId, title: i.title, kind: i.kind, storage_path: i.storage_path, url: i.url, content: i.content, bucket: i.kind === "file" ? "library" : "materials", library_item_id: i.id, visible: true, position: S.materials.length }); if (error) { toast("No se pudo añadir: " + error.message); return; } toast("Añadido desde la biblioteca"); refreshAll(true); })); };
+    openDialog("De la biblioteca", `<div class="inline-form"><input type="search" id="lp-q" placeholder="Buscar…"><ul class="sess-pick" id="lp-list"></ul><p class="meta"><a href="biblioteca.html" target="_blank">Abrir la biblioteca completa</a> · <button class="button secondary small" id="lp-new">Subir uno nuevo a esta clase</button></p></div>`, d => { render(d); d.querySelector("#lp-q").addEventListener("input", e => { q = e.target.value; render(d); }); d.querySelector("#lp-new").addEventListener("click", () => { dialog.close(); addMaterialDialog(true); }); });
+  }
+  function addMaterialDialog(direct) {
+    if (!direct) { libraryPickDialog(); return; }
+    openDialog("Subir material a esta clase", `<div class="inline-form">
       <div class="field"><label for="m-title">Título</label><input id="m-title"></div>
       <div class="field"><label for="m-kind">Tipo</label><select id="m-kind"><option value="file">Archivo (lección HTML, PDF, imagen…)</option><option value="link">Enlace</option><option value="text">Texto</option></select></div>
       <div class="field" id="m-file-f"><label for="m-file">Archivo</label><input id="m-file" type="file"></div>
       <div class="field" id="m-url-f" hidden><label for="m-url">Enlace</label><input id="m-url" placeholder="https://…"></div>
       <div class="field" id="m-text-f" hidden><label for="m-text">Texto</label><textarea id="m-text" rows="5"></textarea></div>
       <label style="font-size:14px"><input type="checkbox" id="m-visible" checked> Visible para los alumnos</label>
+      <label style="font-size:14px"><input type="checkbox" id="m-lib" checked> Guardar también en la biblioteca</label>
       <button class="button" id="m-save" style="margin-top:8px">Guardar material</button></div>`, d => {
       const mk = d.querySelector("#m-kind"); const u = () => { d.querySelector("#m-url-f").hidden = mk.value !== "link"; d.querySelector("#m-text-f").hidden = mk.value !== "text"; d.querySelector("#m-file-f").hidden = mk.value !== "file"; }; mk.addEventListener("change", u); u();
       d.querySelector("#m-file").addEventListener("change", e => { const f = e.target.files[0]; if (f && !d.querySelector("#m-title").value) d.querySelector("#m-title").value = f.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " "); });
@@ -840,7 +851,12 @@
         const row = { session_id: sessionId, title, kind: mk.value, visible: d.querySelector("#m-visible").checked, position: S.materials.length };
         if (mk.value === "link") row.url = d.querySelector("#m-url").value.trim();
         if (mk.value === "text") row.content = d.querySelector("#m-text").value.trim();
-        if (mk.value === "file") { const f = d.querySelector("#m-file").files[0]; if (!f) { toast("Elige un archivo"); return; } d.querySelector("#m-save").disabled = true; const path = `${S.group.id}/${Date.now()}-${f.name.replace(/[^\w.\-]/g, "_")}`; const { error } = await sb.storage.from("materials").upload(path, f); if (error) { toast("No se pudo subir: " + error.message); d.querySelector("#m-save").disabled = false; return; } row.storage_path = path; }
+        const toLib = d.querySelector("#m-lib").checked;
+        if (mk.value === "file") { const f = d.querySelector("#m-file").files[0]; if (!f) { toast("Elige un archivo"); return; } d.querySelector("#m-save").disabled = true;
+          const bucket = toLib ? "library" : "materials", path = toLib ? `${me.user.id}/${Date.now()}-${f.name.replace(/[^\w.\-]/g, "_")}` : `${S.group.id}/${Date.now()}-${f.name.replace(/[^\w.\-]/g, "_")}`;
+          const { error } = await sb.storage.from(bucket).upload(path, f); if (error) { toast("No se pudo subir: " + error.message); d.querySelector("#m-save").disabled = false; return; } row.storage_path = path; row.bucket = bucket; row.size = f.size; }
+        if (toLib) { const li = { owner_id: me.user.id, title, kind: mk.value, storage_path: row.storage_path, url: row.url, content: row.content, folder: S.group.name, size_bytes: row.size || null }; delete row.size; const r = await sb.from("library_items").insert(li).select("id").single(); if (!r.error) row.library_item_id = r.data.id; else if (!/library_items/.test(r.error.message)) toast("No se guardó en la biblioteca: " + r.error.message); }
+        delete row.size;
         const { error } = await sb.from("materials").insert(row); if (error) { toast(error.message); return; } dialog.close(); toast("Material guardado"); refreshAll(true);
       });
     });

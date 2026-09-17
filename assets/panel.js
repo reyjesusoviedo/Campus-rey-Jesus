@@ -8,6 +8,7 @@
 
   const role = me.profile.role;
   const staff = role === "coordinator" || role === "teacher";
+  if (!staff) document.querySelectorAll("[data-staff-only]").forEach(a => a.remove());
 
   function openDialog(title, html, onMount) {
     document.getElementById("dialog-title").textContent = title;
