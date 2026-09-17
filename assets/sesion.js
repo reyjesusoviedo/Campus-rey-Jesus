@@ -121,7 +121,7 @@
   function liveBadge() {
     const s = S.session;
     if (s.status === "live") return `<span class="live"><i></i> En directo</span>`;
-    if (s.status === "closed") return `<span class="live closed">${s.recording_url ? "Grabada" : "Terminada"}</span>`;
+    if (s.status === "closed") return `<span class="live closed">${inGrace() ? "Terminando…" : s.recording_url ? "Grabada" : "Terminada"}</span>`;
     return `<span class="live sched"><i></i> ${fmtDate(s.starts_at)}</span>`;
   }
   function teacherName() { const t = S.members.find(m => m.user_id === S.group.teacher_id); return (t?.profile?.full_name || nameCache[S.group.teacher_id] || "tu maestro").split(" ")[0]; }
@@ -155,10 +155,15 @@
   async function sessionAction(act) {
     if (act === "start") { const first = S.materials.find(m => m.visible); const upd = { status: "live", started_at: S.session.started_at || new Date().toISOString() }; if (!S.session.projected_material_id && first) upd.projected_material_id = first.id; const { error } = await sb.from("sessions").update(upd).eq("id", sessionId); if (error) { toast("No se pudo iniciar: " + error.message); return; } log("session_started"); if (upd.projected_material_id) await ensureLessonActivity(first); toast("Clase iniciada" + (upd.projected_material_id ? " · " + first.title + " en pantalla" : "")); refreshAll(true); }
     if (act === "end") {
-      openDialog("Finalizar la clase", `<div class="inline-form"><div class="field"><label for="e-rec">Enlace de la grabación (puedes añadirlo después)</label><input id="e-rec" placeholder="https://…"></div><div class="field"><label for="e-sum">Resumen para el grupo (opcional)</label><textarea id="e-sum" rows="3"></textarea></div><button class="button danger" id="e-go">Finalizar</button></div>`, d => {
+      openDialog("Finalizar la clase", `<div class="inline-form">
+        <div class="row"><div class="field"><label for="e-grace">Margen para terminar de escribir</label><select id="e-grace"><option value="0">Sin margen</option><option value="2" selected>2 minutos</option><option value="5">5 minutos</option></select></div>
+        <div class="field"><label><input type="checkbox" id="e-def" checked> Dejar las actividades abiertas en diferido</label></div></div>
+        <div class="field"><label for="e-rec">Enlace de la grabación (puedes añadirlo después)</label><input id="e-rec" placeholder="https://…"></div>
+        <div class="field"><label for="e-sum">Resumen para el grupo (opcional)</label><textarea id="e-sum" rows="3"></textarea></div>
+        <button class="button danger" id="e-go">Finalizar</button></div>`, d => {
         d.querySelector("#e-go").addEventListener("click", async () => {
-          await sb.from("activities").update({ status: "closed" }).eq("session_id", sessionId).eq("status", "open").or("content->>auto.is.null,content->>auto.neq.true");
-          await sb.from("sessions").update({ status: "closed", recording_url: d.querySelector("#e-rec").value.trim() || null, summary: d.querySelector("#e-sum").value.trim() || null }).eq("id", sessionId);
+          const { error } = await sb.rpc("end_session", { p_session: sessionId, p_grace: Number(d.querySelector("#e-grace").value), p_allow_deferred: d.querySelector("#e-def").checked, p_recording: d.querySelector("#e-rec").value.trim() || null, p_summary: d.querySelector("#e-sum").value.trim() || null });
+          if (error) { toast("No se pudo finalizar: " + error.message); return; }
           log("session_ended"); dialog.close(); toast("Clase finalizada"); await refreshAll(true); summaryDialog();
         });
       });
@@ -181,7 +186,7 @@
     if (act === "delete-session") { if (!confirm(`¿Borrar la clase «${S.session.title}»? Se borrarán sus actividades, respuestas y material.`)) return; const { error } = await sb.from("sessions").delete().eq("id", sessionId); if (error) { toast("No se pudo borrar: " + error.message); return; } location.replace("panel.html"); return; }
     if (act === "quick") { quickDialog(); return; }
     if (act === "quick-close") { const q = openQuick(); if (q) { await sb.from("activities").update({ status: "closed" }).eq("id", q.id); log("activity_closed", { activity_id: q.id }); toast("Pregunta cerrada"); refreshAll(true); } return; }
-    if (act === "reopen") { await sb.from("sessions").update({ status: "live" }).eq("id", sessionId); toast("Clase reabierta"); refreshAll(true); }
+    if (act === "reopen") { const { error } = await sb.rpc("reopen_session", { p_session: sessionId }); if (error) { toast("No se pudo reabrir: " + error.message); return; } toast("Clase reabierta"); refreshAll(true); }
   }
 
 
@@ -279,6 +284,8 @@
     const el = $("lesson-saved"); if (el) { el.hidden = false; }
     if (!S.savedOnce) { S.savedOnce = true; toast("Tus respuestas de la lección se guardan en el campus"); }
   }
+  const graceEnd = () => S.session.ended_at ? new Date(S.session.ended_at).getTime() + (S.session.grace_minutes ?? 2) * 60000 : 0;
+  const inGrace = () => S.session.status === "closed" && !!S.session.ended_at && Date.now() < graceEnd();
   const isMobile = () => window.matchMedia("(max-width: 700px)").matches;
   window.addEventListener("message", async e => {
     const d = e.data || {}; if (d.campus !== "lesson" || !S.stageFrame || e.source !== S.stageFrame.contentWindow) return;
@@ -362,12 +369,19 @@
     const askHtml = q ? `<div class="ask-card ${projectedMaterial() ? "compact" : ""}"><p class="eyebrow">${esc(teacherName())} te pregunta</p><h2>${esc(q.title)}</h2><p>${S.myResponses[q.id] ? "Tu respuesta está enviada. Puedes completarla en la caja de abajo." : "Escucha la pregunta y escribe tu respuesta en la caja de abajo."}</p>${S.myResponses[q.id] ? `<div class="mine">${esc(S.myResponses[q.id].content?.text || "")}</div>` : ""}${S.results[q.id]?.allowed ? `<h3 style="margin:12px 0 6px">Respuestas del grupo</h3>${resultsHtml(q, S.results[q.id])}` : ""}</div>` : "";
     const cardHtml = (open && !isQuick(open)) ? `<details class="activity-card" open><summary><span class="tag live">Actividad</span> ${esc(open.title)}</summary><div id="act-slot"></div></details>` : "";
     const renderAct = (open && !isQuick(open)) ? slot => renderStudentActivity(slot, open, false) : null;
+    if (s.status === "closed" && inGrace()) {
+      const pm = projectedMaterial();
+      const banner = `<div class="grace-banner"><strong>La clase ha terminado.</strong> Tienes <b id="grace-clock"></b> para enviar lo que estés escribiendo.</div>`;
+      if (pm) { ensureStage(main, pm, banner + askHtml + cardHtml, renderAct); tickGrace(); return; }
+      S.stageFrame = null; main.innerHTML = banner + askHtml + cardHtml; if (renderAct) renderAct(main.querySelector("#act-slot")); tickGrace(); return;
+    }
     if (s.status === "closed") {
-      const done = S.activities.filter(a => a.status !== "draft" && !a.content?.auto);
+      if (S.jitsi) { try { S.jitsi.executeCommand("hangup"); S.jitsi.dispose(); } catch {} S.jitsi = null; S.jitsiEl = null; }
+      const done = s.allow_deferred ? S.activities.filter(a => a.status !== "draft" && !a.content?.auto) : [];
       if (S.focus && done.some(a => a.id === S.focus)) return renderStudentActivity(main, done.find(a => a.id === S.focus), true);
       const pm = projectedMaterial();
-      main.innerHTML = `<div class="student-wait" style="padding:10px 0 18px"><h2>La clase terminó</h2><p>${s.recording_url ? `<a class="button" target="_blank" rel="noopener" href="${esc(s.recording_url)}">Ver la grabación</a><br><br>Puedes hacer las actividades igualmente.` : "Cuando esté la grabación, aparecerá aquí."}</p>${s.summary ? `<p><strong>Resumen:</strong> ${esc(s.summary)}</p>` : ""}</div>
-        ${done.length ? `<ul class="seq">${done.map(a => `<li><span class="kind">${KIND[a.kind]}</span><div class="row"><strong>${esc(a.title)}</strong>${S.myResponses[a.id] ? `<span class="tag">Respondida</span>` : ""}<button class="button secondary small" data-focus="${a.id}">${S.myResponses[a.id] ? "Ver" : "Hacer"}</button></div></li>`).join("")}</ul>` : ""}
+      main.innerHTML = `<div class="student-wait" style="padding:10px 0 18px"><h2>Gracias por venir</h2><p>${s.recording_url ? `<a class="button" target="_blank" rel="noopener" href="${esc(s.recording_url)}">Ver la grabación</a><br><br>Puedes hacer las actividades igualmente.` : "Cuando esté la grabación, aparecerá aquí."}</p>${s.summary ? `<p><strong>Resumen:</strong> ${esc(s.summary)}</p>` : ""}</div>
+        ${done.length ? `<p class="meta" style="text-align:center">Puedes hacer las actividades con calma; ${esc(teacherName())} las verá.</p><ul class="seq">${done.map(a => `<li><span class="kind">${KIND[a.kind]}</span><div class="row"><strong>${esc(a.title)}</strong>${S.myResponses[a.id] ? `<span class="tag">Respondida</span>` : ""}<button class="button secondary small" data-focus="${a.id}">${S.myResponses[a.id] ? "Ver" : "Hacer"}</button></div></li>`).join("")}</ul>` : s.allow_deferred ? "" : `<p class="meta" style="text-align:center">Las actividades se han cerrado.</p>`}
         ${pm ? `<div style="margin-top:16px">${stageHtml(pm)}</div>` : ""}`;
       if (pm) bindStage(main, pm);
       main.querySelectorAll("[data-focus]").forEach(b => b.addEventListener("click", async () => { S.focus = b.dataset.focus; await loadResults(S.focus); renderMain(); }));
@@ -412,6 +426,11 @@
     if (a.closes_at) tickClock(a);
   }
 
+  function tickGrace() {
+    const el = $("grace-clock"); if (!el) return;
+    const ms = graceEnd() - Date.now(); if (ms <= 0) { refreshAll(true); return; }
+    el.textContent = `${Math.floor(ms / 60000)}:${String(Math.floor(ms % 60000 / 1000)).padStart(2, "0")}`; setTimeout(tickGrace, 1000);
+  }
   function tickClock(a) {
     const el = $("clock"); if (!el) return;
     const upd = () => { const ms = new Date(a.closes_at) - Date.now(); if (ms <= 0) { el.textContent = "Tiempo agotado"; return; } const m = Math.floor(ms / 60000), s = Math.floor(ms % 60000 / 1000); el.textContent = `${m}:${String(s).padStart(2, "0")}`; setTimeout(upd, 1000); };
@@ -945,7 +964,7 @@
   // ---- barra de respuesta del alumno ----
   function updateBar() {
     const bar = $("reply-bar"); if (!bar) return;
-    const show = !S.teacher && S.session.status !== "scheduled";
+    const show = !S.teacher && (S.session.status === "live" || inGrace());
     bar.hidden = !show; document.body.classList.toggle("has-bar", show);
     if (!show) return;
     const t = openText(), label = $("bar-label"), ta = $("bar-text");

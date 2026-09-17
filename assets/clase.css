@@ -323,3 +323,6 @@ body.clase.student.side-mini .c-side, body.clase.student.auto-mini .c-side { top
   body.clase.student.auto-mini .c-side, body.clase.student.side-mini .c-side { left: 8px; right: auto; bottom: auto; top: 58px; transition: top .2s; }
   body.clase.student.auto-mini.top-hidden .c-side, body.clase.student.side-mini.top-hidden .c-side { top: 8px; }
 }
+
+.grace-banner { background: #fff7e0; border: 2px solid #f1dfa2; border-radius: 12px; padding: 10px 14px; margin-bottom: 12px; font-size: 14px; }
+.grace-banner b { font-variant-numeric: tabular-nums; }
