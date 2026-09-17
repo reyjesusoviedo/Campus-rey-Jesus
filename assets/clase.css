@@ -318,3 +318,8 @@ body.clase.teacher .c-stage .stage-head .button.small { padding: 5px 9px; font-s
   body.clase.student .c-main { padding-bottom: 150px; }
 }
 body.clase.student.side-mini .c-side, body.clase.student.auto-mini .c-side { top: auto; height: auto; max-height: none; min-height: 0; grid-template-rows: none; }
+/* Miniatura de vídeo en móvil: arriba a la izquierda, bajo la cabecera */
+@media (max-width: 700px) {
+  body.clase.student.auto-mini .c-side, body.clase.student.side-mini .c-side { left: 8px; right: auto; bottom: auto; top: 58px; transition: top .2s; }
+  body.clase.student.auto-mini.top-hidden .c-side, body.clase.student.side-mini.top-hidden .c-side { top: 8px; }
+}
