@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preparar clase · Campus Rey Jesús Oviedo</title>
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="stylesheet" href="assets/piloto.css">
+<link rel="stylesheet" href="assets/clase.css">
+<link rel="stylesheet" href="assets/biblioteca.css">
+<link rel="stylesheet" href="assets/preparar.css">
+</head>
+<body class="prep">
+<header class="c-top" id="c-top"><a class="brand" href="panel.html" data-brand></a><p class="meta" id="loading">Cargando…</p></header>
+<main class="prep-main" id="contenido" hidden>
+  <section class="prep-col prep-lib" id="col-lib"></section>
+  <section class="prep-col prep-class" id="col-class"></section>
+  <section class="prep-col prep-preview" id="col-preview"></section>
+</main>
+<dialog id="dialog" aria-labelledby="dialog-title" style="border:0;border-radius:18px;padding:26px;width:min(560px,92vw)">
+  <div class="panel-head"><h2 id="dialog-title"></h2><button id="dialog-close" class="icon-button" aria-label="Cerrar">×</button></div>
+  <div id="dialog-body"></div>
+</dialog>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/db.js"></script>
+<script src="assets/preparar.js"></script>
+</body>
+</html>
