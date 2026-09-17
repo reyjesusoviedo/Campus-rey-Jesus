@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Certificado</title>
+<style>
+  body { margin: 0; background: #e6ebf0; font-family: Inter, system-ui, sans-serif; color: #101827; display: grid; place-items: center; min-height: 100vh; padding: 20px; box-sizing: border-box; }
+  .cert { width: min(900px, 100%); aspect-ratio: 1.414; background: #fff; border: 14px solid #0a4f85; outline: 4px solid #d9aa50; outline-offset: -26px; padding: 60px 70px; box-sizing: border-box; display: grid; align-content: center; text-align: center; gap: 12px; position: relative; }
+  .cert img { width: 110px; height: 110px; border-radius: 50%; object-fit: cover; margin: 0 auto; }
+  .cert .m { font-size: 14px; letter-spacing: .14em; text-transform: uppercase; color: #0a4f85; font-weight: 800; }
+  .cert h1 { font-family: Georgia, serif; font-size: 2.4rem; margin: 6px 0; color: #0a4f85; }
+  .cert .who { font-family: Georgia, serif; font-size: 2rem; margin: 10px 0; border-bottom: 2px solid #d9aa50; display: inline-block; padding: 0 30px 4px; justify-self: center; }
+  .cert .t { font-size: 17px; color: #5b6673; max-width: 60ch; margin: 0 auto; }
+  .cert .course { font-family: Georgia, serif; font-size: 1.5rem; margin: 6px 0; }
+  .cert .foot { display: flex; justify-content: space-between; margin-top: 30px; font-size: 13px; color: #5b6673; }
+  .cert .foot b { display: block; color: #101827; border-top: 1px solid #5b6673; padding-top: 6px; margin-top: 30px; }
+  .actions { margin-top: 16px; display: flex; gap: 8px; }
+  .actions button { border: 0; border-radius: 10px; padding: 10px 16px; font: inherit; font-weight: 700; background: #0c70bb; color: #fff; cursor: pointer; }
+  @media print { body { background: #fff; padding: 0; } .actions { display: none; } .cert { width: 100%; border-width: 10px; } @page { size: landscape; margin: 0; } }
+  @media (max-width: 700px) { .cert { padding: 30px 20px; aspect-ratio: auto; } .cert h1 { font-size: 1.6rem; } .cert .who { font-size: 1.4rem; } }
+</style>
+</head>
+<body>
+<div>
+<div class="cert" id="cert"><p>Cargando…</p></div>
+<div class="actions"><button onclick="window.print()">Imprimir o guardar en PDF</button></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/db.js"></script>
+<script>
+(async () => {
+  const { sb, esc, cfg, requireUser, qs, settings } = Campus;
+  const me = await requireUser(); const st = settings();
+  const { data: e } = await sb.from("enrollments").select("*, course:courses(*), profile:profiles(full_name)").eq("id", qs("e")).maybeSingle();
+  const box = document.getElementById("cert");
+  if (!e || !e.completed_at) { box.innerHTML = "<p>Este certificado no está disponible todavía.</p>"; return; }
+  const d = new Date(e.completed_at).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
+  box.innerHTML = `${cfg.logoUrl ? `<img src="${cfg.logoUrl}" alt="">` : ""}<div class="m">${esc(st.ministry_name || "")}</div><h1>Certificado</h1><p class="t">Se certifica que</p><div class="who">${esc(e.profile?.full_name || me.profile.full_name)}</div><p class="t">${esc(e.course.certificate_text || "ha completado satisfactoriamente el curso")}</p><div class="course">${esc(e.course.title)}</div><p class="t">${e.course.lessons?.length ? e.course.lessons.length + " lecciones · " : ""}${esc(cfg.brand)}${st.city ? " · " + esc(st.city) : ""}</p>
+    <div class="foot"><span>Fecha<b>${d}</b></span><span>Por el ministerio<b>${esc(st.brand_name || cfg.brand)}</b></span></div>`;
+})();
+</script>
+</body>
+</html>

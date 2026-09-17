@@ -28,7 +28,8 @@
 <script>
 (async () => {
   const { sb, cfg, esc } = Campus;
-  document.querySelector("[data-brand]").innerHTML = `<span class="brand-mark">${esc(cfg.brandShort)}</span><span>${esc(cfg.brand)}<small>${esc(cfg.tagline)}</small></span>`;
+  await Campus.loadSettings();
+  document.querySelector("[data-brand]").innerHTML = `${Campus.brandMark()}<span>${esc(cfg.brand)}<small>${esc(cfg.tagline)}</small></span>`;
   const code = (new URLSearchParams(location.search).get("c") || "").toUpperCase();
   const main = document.getElementById("main");
   if (!code) { main.innerHTML = `<div class="view-wait"><h2>Falta el código</h2><p>Pide a tu maestro el enlace de «solo ver».</p></div>`; return; }

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mi curso · Campus</title>
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="stylesheet" href="assets/piloto.css">
+<link rel="stylesheet" href="assets/clase.css">
+<link rel="stylesheet" href="assets/curso.css">
+</head>
+<body class="curso">
+<header class="c-top" id="c-top"><a class="brand" href="panel.html" data-brand></a><p class="meta" id="loading">Cargando…</p></header>
+<main class="k-main" id="contenido" hidden></main>
+<dialog id="dialog" aria-labelledby="dialog-title" style="border:0;border-radius:18px;padding:26px;width:min(560px,92vw)">
+  <div class="panel-head"><h2 id="dialog-title"></h2><button id="dialog-close" class="icon-button" aria-label="Cerrar">×</button></div>
+  <div id="dialog-body"></div>
+</dialog>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/db.js"></script>
+<script src="assets/curso.js"></script>
+</body>
+</html>
