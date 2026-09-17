@@ -282,3 +282,39 @@ body.clase.teacher .c-stage .stage-head .button.small { padding: 5px 9px; font-s
 .sema-big button:hover { outline: 2px solid var(--teal-dark); }
 
 .c-tools a.tb { text-decoration: none; }
+
+/* Móvil · alumno afinado */
+@media (max-width: 700px) {
+  body.clase.student .c-top { position: sticky; top: 0; transition: transform .2s; padding: 8px 10px; }
+  body.clase.student.top-hidden .c-top { transform: translateY(-100%); }
+  body.clase.student .c-top .brand { display: none; }
+  body.clase.student .c-top .t p { display: none; }
+  body.clase.student .c-top .t h1 { font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body.clase.student .c-top .live { padding: 4px 8px; font-size: 11px; }
+  body.clase.student .c-top .r { gap: 6px; } body.clase.student .c-top .button.small { padding: 6px 9px; font-size: 12px; }
+  body.clase.student .c-main { padding: 8px; gap: 8px; }
+  body.clase.student .c-stage { padding: 8px; }
+  body.clase.student .c-stage .stage { min-height: 0; border: 0; border-radius: 0; }
+  body.clase.student .c-stage .stage-frame[data-auto="1"] { height: auto; min-height: 300px; }
+  body.clase.student .stage-head { flex-wrap: wrap; gap: 6px; }
+  body.clase.student .stage-head strong { font-size: 1rem; }
+  body.clase.student .ask-card.compact { padding: 8px 12px; border-width: 2px; margin-bottom: 8px; }
+  body.clase.student .ask-card.compact h2 { font-size: 1.05rem; margin: 2px 0; }
+  body.clase.student .ask-card.compact p { font-size: 12px; }
+  body.clase.student .ask-card.compact h3, body.clase.student .ask-card.compact .responses-table, body.clase.student .ask-card.compact .live-board { display: none; }
+  body.clase.student.auto-mini .c-side { position: fixed; right: 8px; bottom: 150px; width: 150px; z-index: 30; }
+  body.clase.student.auto-mini .c-side .mat-card, body.clase.student.auto-mini .c-side .answer-card, body.clase.student.auto-mini .side-toggle, body.clase.student.auto-mini .video-note { display: none; }
+  body.clase.student.auto-mini .video-card { min-height: 0; padding: 6px; }
+  body.clase.student.auto-mini .video-card .face { width: 28px; height: 28px; font-size: 14px; margin-bottom: 2px; }
+  body.clase.student.auto-mini .video-card .hint { display: none; }
+  body.clase.student.auto-mini .jitsi-box { height: 100px; min-height: 100px; }
+  body.clase.student .reply-bar { padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); }
+  body.clase.student .reply-label { font-size: 12px; }
+  body.clase.student #bar-text { font-size: 16px; padding: 8px 10px; }
+  body.clase.student .reply-send { min-height: 42px; font-size: 14px; padding: 0 14px; }
+  body.clase.student .sema { gap: 6px; margin-top: 6px; }
+  body.clase.student .sema button { padding: 4px 2px; font-size: 11px; grid-auto-flow: column; gap: 4px; border-width: 1px; }
+  body.clase.student .sema button span { font-size: 16px; }
+  body.clase.student .c-main { padding-bottom: 150px; }
+}
+body.clase.student.side-mini .c-side, body.clase.student.auto-mini .c-side { top: auto; height: auto; max-height: none; min-height: 0; grid-template-rows: none; }
