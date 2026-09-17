@@ -38,13 +38,26 @@
   document.querySelector("[data-brand]").innerHTML = `<span class="brand-mark">${esc(cfg.brandShort)}</span><span>${esc(cfg.brand)}<small>${esc(cfg.tagline)}</small></span>`;
 
   // Si ya hay sesión (o llega desde un enlace mágico), entrar directamente
-  const wantsGuest = !!new URLSearchParams(location.search).get("clase");
+  const wantsGuest = !!new URLSearchParams(location.search).get("clase"), hasInvite = !!new URLSearchParams(location.search).get("equipo");
   sb.auth.onAuthStateChange((event, session) => { if (session && !wantsGuest) location.replace("panel.html"); });
   const { data: { session } } = await sb.auth.getSession();
-  if (session && !wantsGuest) { location.replace("panel.html"); return; }
+  if (session && !wantsGuest && !hasInvite) { location.replace("panel.html"); return; }
 
   let mode = "signup";
   const err = document.getElementById("error");
+  const inviteToken = new URLSearchParams(location.search).get("equipo");
+  if (inviteToken) {
+    try { localStorage.setItem("staffInvite", inviteToken); } catch {}
+    const { data: info } = await sb.rpc("staff_invite_info", { p_token: inviteToken });
+    if (!info) err.textContent = "Esta invitación no existe. Pide una nueva a coordinación.";
+    else if (info.expired) err.textContent = "Esta invitación ha caducado. Pide a coordinación que la renueve.";
+    else {
+      document.getElementById("name").value = info.full_name || ""; document.getElementById("email").value = info.email || "";
+      document.querySelector(".auth-card h1").textContent = "Bienvenido al equipo";
+      document.getElementById("hint").innerHTML = `Te han dado de alta como <strong>${info.role === "coordinator" ? "coordinación" : "maestro/a"}</strong>${info.group ? " del grupo <strong>" + info.group + "</strong>" : ""}.${info.message ? "<br>«" + info.message + "»" : ""}<br>Pulsa el botón: recibirás un enlace en tu correo y al abrirlo ya estarás dentro con tu rol.`;
+      const { data: { session: cur } } = await sb.auth.getSession(); if (cur) { location.replace("escritorio.html"); return; }
+    }
+  }
   const preCode = new URLSearchParams(location.search).get("clase");
   if (preCode) { document.getElementById("class-code").value = preCode.toUpperCase(); setTimeout(() => document.querySelector('[data-mode="guest"]').click(), 0); }
   document.querySelectorAll("[data-mode]").forEach(b => b.addEventListener("click", () => {
@@ -70,7 +83,7 @@
         const { data: { session: cur } } = await sb.auth.getSession();
         if (!cur) { const { error } = await sb.auth.signInAnonymously({ options: { data: { full_name: name } } }); if (error) { err.textContent = error.message.includes("Anonymous") ? "El acceso de invitados no está activado. Avisa a coordinación." : error.message; return; } }
         const { data: sid, error } = await sb.rpc("join_as_guest", { p_code: code, p_name: name });
-        if (error) { err.textContent = "Código no válido o clase terminada."; return; }
+        if (error) { err.textContent = /no válido|caducado|terminada/i.test(error.message) ? "Código no válido, caducado o clase terminada. Pide a tu maestro el código actual." : "No se pudo entrar: " + error.message; return; }
         location.replace(sid ? "sesion.html?id=" + sid : "panel.html");
       } finally { btn.disabled = false; }
       return;
