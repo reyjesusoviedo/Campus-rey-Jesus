@@ -8,7 +8,7 @@
 
   const role = me.profile.role;
   const staff = role === "coordinator" || role === "teacher";
-  if (!staff) document.querySelectorAll("[data-staff-only]").forEach(a => a.remove());
+  if (!staff) { document.querySelectorAll("[data-staff-only]").forEach(a => a.remove()); const l = document.querySelector('[data-nav="panel"]'); if (l) { l.textContent = "Mis grupos"; l.href = "panel.html"; } }
   if (staff && !new URLSearchParams(location.search).get("lista")) { location.replace("escritorio.html"); return; }
 
   function openDialog(title, html, onMount) {

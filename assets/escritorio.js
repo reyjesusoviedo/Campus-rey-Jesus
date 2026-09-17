@@ -41,7 +41,7 @@
     const teaching = new Set(S.sessions.map(x => S.groups.find(g => g.id === x.group_id)?.teacher_id).filter(Boolean)).size;
     app.innerHTML = `
       <div class="esc-top"><div><h1>Hola, ${esc(first)}</h1><p>${label} · ${S.sessions.length} clases${coord ? ` · ${teaching} maestros dando clase` : ""}</p></div>
-        <div class="r"><button class="button secondary small" id="b-group">+ Grupo</button><button class="button secondary small" id="b-session">+ Clase</button>${coord && S.hasEquipo ? `<a class="button teal small" href="equipo.html">Equipo</a>` : ""}</div></div>
+        <div class="r"><button class="button secondary small" id="b-group">+ Grupo</button><button class="button secondary small" id="b-session">+ Clase</button>${coord ? `<a class="button teal small" href="equipo.html">+ Invitar maestro</a>` : ""}</div></div>
       <div class="alerts" id="alerts">${alertsHtml()}</div>
       <div class="esc-grid ${coord ? "" : "no-teachers"}">
         <div class="esc-card"><h3>Grupos <span class="lk">${S.groups.length}</span></h3><div class="glist" id="glist">${S.groups.map(groupHtml).join("") || `<p class="meta">Aún no hay grupos.</p>`}</div></div>

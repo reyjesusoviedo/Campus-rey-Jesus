@@ -35,8 +35,15 @@
   }
 
   async function requireUser() {
-    const me = await currentProfile();
+    let me = await currentProfile();
     if (!me) { location.replace("index.html"); return new Promise(() => {}); }
+    let token = null; try { token = localStorage.getItem("staffInvite"); } catch {}
+    if (token && !me.user.is_anonymous) {
+      const { data, error } = await sb.rpc("accept_staff_invite", { p_token: token });
+      try { localStorage.removeItem("staffInvite"); } catch {}
+      if (error) toast("Invitación: " + error.message);
+      else if (data && !data.already) { toast("Ya formas parte del equipo"); me = await currentProfile(); if (!/escritorio/.test(location.pathname)) { location.replace("escritorio.html"); return new Promise(() => {}); } }
+    }
     return me;
   }
 
@@ -64,6 +71,8 @@
       if (error) { toast("No se pudo guardar el nombre"); return; }
       me.profile.full_name = name.trim(); toast("Nombre guardado"); location.reload();
     });
+    if (me.profile.role !== "coordinator") document.querySelectorAll("[data-coord-only]").forEach(a => a.remove());
+    if (!["coordinator", "teacher"].includes(me.profile.role)) document.querySelectorAll("[data-staff-only]").forEach(a => a.remove());
     document.querySelectorAll(".nav-link").forEach(a => { const on = a.dataset.nav === active; a.classList.toggle("active", on); if (on) a.setAttribute("aria-current", "page"); });
     const menu = document.querySelector("[data-menu]");
     if (menu) {
