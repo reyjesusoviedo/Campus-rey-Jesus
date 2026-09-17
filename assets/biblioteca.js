@@ -3,6 +3,7 @@
   const me = await requireUser();
   renderShell(me, "biblioteca");
   const staff = me.profile.role === "teacher" || me.profile.role === "coordinator";
+  if (!staff) document.querySelectorAll("[data-staff-only]").forEach(a => a.remove());
   const app = document.getElementById("app"), dialog = document.getElementById("dialog");
   document.getElementById("dialog-close").addEventListener("click", () => dialog.close());
   function openDialog(title, html, onMount) { document.getElementById("dialog-title").textContent = title; document.getElementById("dialog-body").innerHTML = html; dialog.showModal(); onMount && onMount(dialog); }

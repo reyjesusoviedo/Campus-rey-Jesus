@@ -9,6 +9,7 @@
   const role = me.profile.role;
   const staff = role === "coordinator" || role === "teacher";
   if (!staff) document.querySelectorAll("[data-staff-only]").forEach(a => a.remove());
+  if (staff && !new URLSearchParams(location.search).get("lista")) { location.replace("escritorio.html"); return; }
 
   function openDialog(title, html, onMount) {
     document.getElementById("dialog-title").textContent = title;
@@ -89,13 +90,13 @@
   }
 
   function groupCard(g) {
-    const canManage = role === "coordinator" || g.teacher_id === me.user.id || g.memberships.some(m => m.user_id === me.user.id && m.role === "teacher");
+    const canManage = role === "coordinator" || (g.teacher_id && g.teacher_id === me.user.id) || g.memberships.some(m => m.user_id === me.user.id && m.role === "teacher");
     const sessions = [...g.sessions].sort((a, b) => new Date(b.starts_at) - new Date(a.starts_at));
     const students = g.memberships.filter(m => m.role === "student").length, guests = g.memberships.filter(m => m.role === "guest").length;
     return `<article class="panel group-card">
       <div class="head"><div>
         <h2>${esc(g.name)}</h2>
-        <p class="meta" style="margin:4px 0 0">${esc(g.teacher?.full_name || "")} · ${esc(g.schedule_text || "sin horario")} · ${students} ${students === 1 ? "alumno" : "alumnos"}${guests ? ` · ${guests} ${guests === 1 ? "invitado" : "invitados"}` : ""}</p>
+        <p class="meta" style="margin:4px 0 0">${esc(g.teacher?.full_name || "Sin maestro")} · ${esc(g.schedule_text || "sin horario")} · ${students} ${students === 1 ? "alumno" : "alumnos"}${guests ? ` · ${guests} ${guests === 1 ? "invitado" : "invitados"}` : ""}</p>
         ${g.description ? `<p class="subtle" style="margin:8px 0 0;font-size:14px">${esc(g.description)}</p>` : ""}
       </div>
       <div class="actions">

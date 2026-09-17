@@ -136,7 +136,7 @@
   function renderTop() {
     const s = S.session, zoom = s.zoom_url || S.group.zoom_url;
     const top = $("c-top");
-    top.innerHTML = `<a class="brand" href="panel.html" data-brand></a>
+    top.innerHTML = `<a class="brand" href="escritorio.html" data-brand></a>
       <div class="t"><h1>${esc(s.title)}</h1><p>${esc(S.group.name)}${S.teacher ? "" : " · " + esc(teacherName())}${S.group.schedule_text ? " · " + esc(S.group.schedule_text) : ""}</p></div>
       ${liveBadge()}
       ${S.teacher ? `<span class="clock" id="s-clock"></span>` : ""}
