@@ -3,6 +3,17 @@
   const fail = msg => { app0.innerHTML = `<div style="max-width:640px;margin:40px auto;padding:20px;background:#fff7e0;border:1px solid #f1dfa2;border-radius:12px"><b>La portada no pudo cargar.</b><br><small>${msg}</small><br><br><a class="button" href="entrar.html">Ir al acceso</a></div>`; };
   if (!window.Campus || !Campus.loadSettings) { fail("El navegador está usando una versión antigua del campus. Recarga con Ctrl+F5 o abre en una pestaña de incógnito."); return; }
   const { sb, esc, cfg, loadSettings, brandMark } = Campus;
+  // Asegurar la estructura aunque el index.html sea antiguo
+  const ensure = (id, make) => document.getElementById(id) || make();
+  const header = document.querySelector("header") || (() => { const h = document.createElement("header"); h.className = "s-top"; document.body.prepend(h); return h; })();
+  header.id = "top"; header.className = "s-top";
+  if (!header.querySelector("[data-brand]")) { const a = document.createElement("a"); a.className = "brand"; a.href = "index.html"; a.setAttribute("data-brand", ""); header.prepend(a); }
+  ensure("menu-btn", () => { const b = document.createElement("button"); b.id = "menu-btn"; b.className = "menu-btn"; b.textContent = "☰"; header.querySelector("[data-brand]").after(b); return b; });
+  ensure("nav", () => { const n = document.createElement("nav"); n.id = "nav"; header.querySelector("#menu-btn").after(n); return n; });
+  header.querySelectorAll("nav:not(#nav)").forEach(n => n.remove());
+  if (!header.querySelector(".enter")) { const a = document.createElement("a"); a.className = "enter"; a.href = "entrar.html"; a.textContent = "Entrar al campus"; header.appendChild(a); }
+  ensure("foot", () => { const f = document.createElement("footer"); f.id = "foot"; f.className = "s-foot"; document.body.appendChild(f); return f; });
+  ensure("soon", () => { const d = document.createElement("dialog"); d.id = "soon"; d.className = "soon-dialog"; d.innerHTML = `<h3 id="soon-title">Próximamente</h3><p>Estamos preparando esta sección. Mientras tanto, echa un vistazo a los cursos.</p><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><a class="btn green" href="#cursos" id="soon-go">Ver cursos</a><button class="btn outline" style="color:#0b2f6b;border-color:#0b2f6b" id="soon-close">Cerrar</button></div>`; document.body.appendChild(d); return d; });
   try {
     const st = await loadSettings();
     const chk = await sb.from("courses").select("id", { count: "exact", head: true });
