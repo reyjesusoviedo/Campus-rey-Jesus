@@ -4,6 +4,17 @@
   const sb = window.supabase.createClient(cfg.url, cfg.key);
 
   const ROLE_LABEL = { coordinator: "Coordinación", teacher: "Maestro/a", student: "Alumno/a" };
+  let settingsCache = null;
+  async function loadSettings() {
+    if (settingsCache) return settingsCache;
+    try { const { data } = await sb.from("settings").select("*").eq("id", 1).maybeSingle(); settingsCache = data || {}; } catch { settingsCache = {}; }
+    const st = settingsCache;
+    if (st.brand_name) cfg.brand = st.brand_name; if (st.brand_short) cfg.brandShort = st.brand_short; if (st.tagline) cfg.tagline = st.tagline;
+    cfg.logoUrl = st.logo_path ? sb.storage.from("public").getPublicUrl(st.logo_path).data.publicUrl : null;
+    return st;
+  }
+  const brandMark = () => cfg.logoUrl ? `<img class="brand-mark brand-logo" src="${cfg.logoUrl}" alt="">` : `<span class="brand-mark">${esc(cfg.brandShort)}</span>`;
+  const helpLinks = () => { const st = settingsCache || {}; const out = []; if (st.help_whatsapp) out.push({ kind: "wa", href: "https://wa.me/" + String(st.help_whatsapp).replace(/\D/g, ""), label: "WhatsApp" }); if (st.help_email) out.push({ kind: "mail", href: "mailto:" + st.help_email, label: "Correo" }); return out; };
 
   function esc(s) {
     return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -35,8 +46,15 @@
   }
 
   async function requireUser() {
+    await loadSettings();
     let me = await currentProfile();
     if (!me) { location.replace("index.html"); return new Promise(() => {}); }
+    let course = null; try { course = localStorage.getItem("pendingCourse"); } catch {}
+    if (course && !me.user.is_anonymous) {
+      try { localStorage.removeItem("pendingCourse"); } catch {}
+      const { data: c } = await sb.from("courses").select("id").eq("slug", course).maybeSingle();
+      if (c) { let phone = null; try { phone = localStorage.getItem("pendingPhone"); localStorage.removeItem("pendingPhone"); } catch {} const { data: eid, error } = await sb.rpc("enroll", { p_course: c.id, p_phone: phone }); if (error) toast("No se pudo apuntar: " + error.message); else if (!/curso\.html/.test(location.pathname)) { location.replace("curso.html?e=" + eid); return new Promise(() => {}); } }
+    }
     let token = null; try { token = localStorage.getItem("staffInvite"); } catch {}
     if (token && !me.user.is_anonymous) {
       const { data, error } = await sb.rpc("accept_staff_invite", { p_token: token });
@@ -49,7 +67,7 @@
 
   function renderShell(me, active) {
     const brand = document.querySelector("[data-brand]");
-    if (brand) brand.innerHTML = `<span class="brand-mark">${esc(cfg.brandShort)}</span><span>${esc(cfg.brand)}<small>${esc(cfg.tagline)}</small></span>`;
+    if (brand) brand.innerHTML = `${brandMark()}<span>${esc(cfg.brand)}<small>${esc(cfg.tagline)}</small></span>`;
     const foot = document.querySelector("[data-profile]");
     const anon = !!me.user.is_anonymous;
     if (foot) foot.innerHTML = `<div class="profile-mini"><span class="avatar teal">${esc(initials(me.profile.full_name))}</span><div><strong>${esc(me.profile.full_name)}</strong><span>${anon ? "Invitado/a" : ROLE_LABEL[me.profile.role] || ""}</span></div></div>
@@ -101,5 +119,5 @@
   function qs(name) { return new URLSearchParams(location.search).get(name); }
 
   const isAnon = me => !!me?.user?.is_anonymous;
-  window.Campus = { isAnon, sb, cfg, esc, fmtDate, initials, toast, currentProfile, requireUser, renderShell, isStaff, whatsappMessage, copy, qs, ROLE_LABEL };
+  window.Campus = { isAnon, loadSettings, brandMark, helpLinks, settings: () => settingsCache || {}, sb, cfg, esc, fmtDate, initials, toast, currentProfile, requireUser, renderShell, isStaff, whatsappMessage, copy, qs, ROLE_LABEL };
 })();
