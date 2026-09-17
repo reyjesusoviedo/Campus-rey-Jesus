@@ -153,7 +153,7 @@
     tickSessionClock();
   }
   async function sessionAction(act) {
-    if (act === "start") { const { error } = await sb.from("sessions").update({ status: "live", started_at: S.session.started_at || new Date().toISOString() }).eq("id", sessionId); if (error) { toast("No se pudo iniciar: " + error.message); return; } log("session_started"); toast("Clase iniciada"); refreshAll(true); }
+    if (act === "start") { const first = S.materials.find(m => m.visible); const upd = { status: "live", started_at: S.session.started_at || new Date().toISOString() }; if (!S.session.projected_material_id && first) upd.projected_material_id = first.id; const { error } = await sb.from("sessions").update(upd).eq("id", sessionId); if (error) { toast("No se pudo iniciar: " + error.message); return; } log("session_started"); if (upd.projected_material_id) await ensureLessonActivity(first); toast("Clase iniciada" + (upd.projected_material_id ? " · " + first.title + " en pantalla" : "")); refreshAll(true); }
     if (act === "end") {
       openDialog("Finalizar la clase", `<div class="inline-form"><div class="field"><label for="e-rec">Enlace de la grabación (puedes añadirlo después)</label><input id="e-rec" placeholder="https://…"></div><div class="field"><label for="e-sum">Resumen para el grupo (opcional)</label><textarea id="e-sum" rows="3"></textarea></div><button class="button danger" id="e-go">Finalizar</button></div>`, d => {
         d.querySelector("#e-go").addEventListener("click", async () => {
@@ -887,7 +887,7 @@
       <button class="tb" data-act="objective"><span>⚑</span>Objetivo</button>
       ${s.status !== "closed" ? `<button class="tb" data-act="invite"><span>👥</span>Invitar</button>` : ""}
       <div class="sema-tools" title="Cómo van los alumnos">${semaforoHtml()}</div>
-      ${s.status === "scheduled" ? `<button class="tb start" data-act="start"><span>▶</span>Iniciar</button>` : s.status === "live" ? `<button class="tb end" data-act="end"><span>■</span>Terminar</button>` : `<button class="tb" data-act="summary"><span>📋</span>Resumen</button><button class="tb start" data-act="reopen"><span>↻</span>Reabrir</button><button class="tb" data-act="recording"><span>🎬</span>Grabación</button><button class="tb" data-act="delete-session"><span>🗑</span>Borrar</button>`}`;
+      ${s.status === "scheduled" ? `<a class="tb" href="preparar.html?id=${sessionId}"><span>🧰</span>Preparar</a><button class="tb start" data-act="start"><span>▶</span>Iniciar</button>` : s.status === "live" ? `<button class="tb end" data-act="end"><span>■</span>Terminar</button>` : `<button class="tb" data-act="summary"><span>📋</span>Resumen</button><button class="tb start" data-act="reopen"><span>↻</span>Reabrir</button><button class="tb" data-act="recording"><span>🎬</span>Grabación</button><button class="tb" data-act="delete-session"><span>🗑</span>Borrar</button>`}`;
     t.querySelectorAll("[data-act]").forEach(b => b.addEventListener("click", () => sessionAction(b.dataset.act)));
   }
 

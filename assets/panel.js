@@ -104,6 +104,7 @@
           <span class="when">${fmtDate(s.starts_at)}</span>
           <span class="title">${esc(s.title)}</span>
           ${statusTag(s)}
+          ${canManage && s.status !== "closed" ? `<a class="button teal small" href="preparar.html?id=${s.id}">Preparar</a>` : ""}
           <a class="button secondary small" href="sesion.html?id=${s.id}">${s.status === "closed" ? "Ver" : "Entrar"}</a>
           ${canManage ? `<button class="icon-button" title="Borrar clase" data-del-session="${s.id}" data-title="${esc(s.title)}">🗑</button>` : ""}
         </li>`).join("")}</ul>` : `<p class="meta" style="margin:16px 0 0">Aún no hay clases programadas.</p>`}
@@ -224,7 +225,7 @@
         if (!title || !when) { d.querySelector("#s-error").textContent = "Pon título y fecha."; return; }
         const { data: s, error } = await sb.from("sessions").insert({ group_id: g.id, title, starts_at: new Date(when).toISOString(), zoom_url: d.querySelector("#s-zoom").value.trim() || null, created_by: me.user.id }).select().single();
         if (error) { d.querySelector("#s-error").textContent = error.message; return; }
-        location.href = "sesion.html?id=" + s.id;
+        location.href = "preparar.html?id=" + s.id;
       });
     });
   }
