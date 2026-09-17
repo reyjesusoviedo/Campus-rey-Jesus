@@ -12,10 +12,22 @@
     reports: '<svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>',
     settings: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
     logout: '<svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M21 4v16"/></svg>',
-    bell: '<svg viewBox="0 0 24 24" fill="none" stroke="#0b2f6b" stroke-width="1.8"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0"/></svg>'
+    bell: '<svg viewBox="0 0 24 24" fill="none" stroke="#0b2f6b" stroke-width="1.8"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0"/></svg>',
+    mail: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+    award: '<svg viewBox="0 0 24 24"><circle cx="12" cy="9" r="5"/><path d="m8.5 13.5-2 7 5.5-3 5.5 3-2-7"/></svg>'
   };
+  const avatarHtml = (me, cls) => { const { esc, initials, sb } = Campus; const p = me.profile.avatar_path ? sb.storage.from("public").getPublicUrl(me.profile.avatar_path).data.publicUrl : null; return p ? `<img class="avatar ${cls || ""}" src="${p}" alt="" style="object-fit:cover">` : `<span class="avatar ${cls || ""}">${esc(initials(me.profile.full_name))}</span>`; };
   const MENU = me => {
-    const coord = me.profile.role === "coordinator";
+    const coord = me.profile.role === "coordinator", teacher = me.profile.role === "teacher";
+    if (!coord && !teacher) return [
+      ["resumen", "Resumen", "panel.html", I.home], ["cursos", "Mis cursos", "panel.html#cursos", I.courses], ["progreso", "Mi progreso", "panel.html#progreso", I.follow],
+      ["calendario", "Calendario", "panel.html#clases", I.calendar], ["tareas", "Tareas", "panel.html#tareas", I.reports], ["materiales", "Materiales", "panel.html#materiales", I.library],
+      ["mensajes", "Mensajes", "#", I.mail, "soon"], ["comunidad", "Comunidad", "#", I.students, "soon"], ["certificados", "Certificados", "panel.html#certificados", I.award], ["hr"],
+      ["perfil", "Configuración", "#perfil", I.settings], ["logout", "Cerrar sesión", "#logout", I.logout]];
+    if (teacher) return [
+      ["resumen", "Resumen", "resumen.html", I.home], ["panel", "Mis grupos", "panel.html?lista=1", I.groups], ["seguimiento", "Mis alumnos", "seguimiento.html", I.students],
+      ["preparar", "Preparar clase", "escritorio.html", I.reports], ["biblioteca", "Materiales", "biblioteca.html", I.library], ["escritorio", "Calendario", "escritorio.html", I.calendar],
+      ["mensajes", "Mensajes", "#", I.mail, "soon"], ["hr"], ["perfil", "Configuración", "#perfil", I.settings], ["logout", "Cerrar sesión", "#logout", I.logout]];
     const m = [["resumen", "Resumen", "resumen.html", I.home]];
     if (coord) m.push(["alumnos", "Alumnos", "equipo.html?tab=students", I.students], ["equipo", "Maestros", "equipo.html", I.teachers], ["cursos", "Cursos", "ajustes.html#cursos", I.courses]);
     m.push(["panel", "Grupos", "panel.html?lista=1", I.groups], ["seguimiento", "Seguimiento", "seguimiento.html", I.follow], ["escritorio", "Calendario", "escritorio.html", I.calendar], ["biblioteca", "Biblioteca", "biblioteca.html", I.library], ["reportes", "Reportes", "#", I.reports, "soon"]);
@@ -30,18 +42,20 @@
       const st = settings() || {};
       const side = document.querySelector(".sidebar"); if (!side) return;
       side.innerHTML = `<div class="sb-logo">${cfg.logoUrl ? `<img src="${cfg.logoUrl}" alt="">` : `<span class="brand-mark">${esc(cfg.brandShort)}</span>`}<b>Campus<br>${esc(cfg.brand)}</b><small>${esc(st.motto || cfg.tagline)}</small></div>
-        <div class="sb-user" data-rename><span class="avatar">${esc(initials(me.profile.full_name))}</span><span><b>${esc(me.profile.full_name)}</b><small>${me.profile.role === "coordinator" ? "Coordinación" : "Maestro/a"}</small></span></div>
+        <div class="sb-user" data-rename>${avatarHtml(me)}<span><b>${esc(me.profile.full_name)}</b><small>${me.profile.role === "coordinator" ? "Coordinación" : me.profile.role === "teacher" ? "Maestro/a" : "Alumno/a"}</small></span></div>
         <nav class="sb-nav">${MENU(me).map(x => x[0] === "hr" ? "<hr>" : `<a href="${x[2]}" class="${x[0] === active ? "on" : ""} nav-link" data-key="${x[0]}"><span class="i">${x[3]}</span>${x[1]}${x[4] === "soon" ? `<span class="soon">Próx.</span>` : ""}</a>`).join("")}</nav>
         <p class="sb-quote">«${esc(st.footer_quote || "No solo comparto información: abro camino para que otros conozcan, conecten y crezcan.")}»</p>`;
       side.querySelector('[data-key="logout"]').addEventListener("click", async e => { e.preventDefault(); await sb.auth.signOut(); location.replace("entrar.html"); });
-      side.querySelector('[data-key="reportes"]').addEventListener("click", e => { e.preventDefault(); Campus.toast("Reportes: próximamente"); });
-      side.querySelector("[data-rename]").addEventListener("click", async () => { const name = prompt("Tu nombre y apellido:", me.profile.full_name); if (!name || !name.trim()) return; const { error } = await sb.from("profiles").update({ full_name: name.trim() }).eq("id", me.user.id); if (error) { Campus.toast("No se pudo guardar"); return; } location.reload(); });
+      side.querySelectorAll(".sb-nav a").forEach(a => { if (a.querySelector(".soon")) a.addEventListener("click", e => { e.preventDefault(); Campus.toast(a.textContent.replace("Próx.", "").trim() + ": próximamente"); }); });
+      side.querySelector("[data-rename]").addEventListener("click", () => Shell.profileDialog(me));
+      side.querySelector('[data-key="perfil"]')?.addEventListener("click", e => { e.preventDefault(); Shell.profileDialog(me); });
       const top = document.querySelector(".topbar");
       if (top) {
         top.innerHTML = `<button class="menu-button" data-menu aria-label="Abrir menú">☰</button><span class="tb-title">${esc(title || "")}</span>
           <div class="tb-search"><input type="search" id="tb-q" placeholder="Buscar alumno, curso o grupo…" autocomplete="off"><div class="tb-results" id="tb-r" hidden></div></div>
           <div class="tb-bell" id="tb-bell">${I.bell}<i id="tb-n" hidden></i><div class="tb-alerts" id="tb-a" hidden></div></div>
-          <div class="tb-me"><span class="avatar">${esc(initials(me.profile.full_name))}</span><span>${esc(me.profile.full_name)}</span></div>`;
+          <div class="tb-me" data-profile-open>${avatarHtml(me)}<span>${esc(me.profile.full_name)}</span></div>`;
+        top.querySelector("[data-profile-open]").addEventListener("click", () => Shell.profileDialog(me));
         // menú móvil
         let ov = document.getElementById("nav-overlay"); if (!ov) { ov = document.createElement("div"); ov.id = "nav-overlay"; ov.className = "nav-overlay"; document.body.appendChild(ov); }
         if (!side.querySelector(".nav-close")) { const x = document.createElement("button"); x.className = "icon-button nav-close"; x.setAttribute("aria-label", "Cerrar menú"); x.textContent = "×"; side.prepend(x); x.addEventListener("click", () => document.body.classList.remove("nav-open")); }
@@ -58,6 +72,26 @@
         document.addEventListener("click", e => { if (!bell.contains(e.target)) list.hidden = true; });
         Shell.alerts(me).then(al => { if (!al.length) { list.innerHTML = `<div class="meta">Sin avisos.</div>`; return; } n.textContent = al.length; n.hidden = false; list.innerHTML = al.map(a => `<a href="${esc(a.href)}">${a.icon} ${esc(a.text)}</a>`).join(""); });
       }
+    },
+    profileDialog(me) {
+      const { sb, esc } = Campus;
+      let d = document.getElementById("profile-dialog");
+      if (!d) { d = document.createElement("dialog"); d.id = "profile-dialog"; d.style.cssText = "border:0;border-radius:18px;padding:26px;width:min(460px,92vw)"; document.body.appendChild(d); }
+      d.innerHTML = `<div class="panel-head"><h2 style="margin:0">Mi perfil</h2><button class="icon-button" id="pd-x" aria-label="Cerrar">×</button></div>
+        <div class="inline-form" style="margin-top:12px"><div style="display:flex;gap:12px;align-items:center">${avatarHtml(me, "big")}<div class="field" style="margin:0;flex:1"><label for="pd-photo">Foto</label><input id="pd-photo" type="file" accept="image/*"></div></div>
+        <div class="field"><label for="pd-name">Nombre y apellido</label><input id="pd-name" value="${esc(me.profile.full_name)}"></div>
+        <div class="field"><label for="pd-phone">Teléfono (WhatsApp)</label><input id="pd-phone" value="${esc(me.profile.phone || "")}"></div>
+        <p class="meta">${esc(me.user.email || "")}</p><button class="button" id="pd-save">Guardar</button></div>`;
+      d.showModal();
+      d.querySelector("#pd-x").addEventListener("click", () => d.close());
+      d.querySelector("#pd-save").addEventListener("click", async () => {
+        const row = { full_name: d.querySelector("#pd-name").value.trim() || me.profile.full_name, phone: d.querySelector("#pd-phone").value.trim() || null };
+        const f = d.querySelector("#pd-photo").files[0];
+        if (f) { const path = "avatars/" + me.user.id + "-" + Date.now() + "." + (f.name.split(".").pop() || "jpg"); const { error } = await sb.storage.from("public").upload(path, f, { upsert: true }); if (error) { Campus.toast("No se pudo subir la foto: " + error.message); return; } row.avatar_path = path; }
+        const { error } = await sb.from("profiles").update(row).eq("id", me.user.id);
+        if (error) { Campus.toast("No se pudo guardar: " + error.message); return; }
+        d.close(); location.reload();
+      });
     },
     async alerts(me) {
       const { sb } = Campus; const coord = me.profile.role === "coordinator"; const out = [];

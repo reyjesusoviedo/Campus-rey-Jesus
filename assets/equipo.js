@@ -4,6 +4,7 @@
   renderShell(me, "equipo"); if (window.Shell && ["coordinator", "teacher"].includes(me.profile.role)) Shell.render(me, "equipo", "Equipo");
   const app = document.getElementById("app"), dialog = document.getElementById("dialog");
   document.getElementById("dialog-close").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("click", e => { if (e.target === dialog) dialog.close(); });
   function openDialog(title, html, onMount) { document.getElementById("dialog-title").textContent = title; document.getElementById("dialog-body").innerHTML = html; dialog.showModal(); onMount && onMount(dialog); }
   if (me.profile.role !== "coordinator") { app.innerHTML = `<div class="lib-empty"><h2>Solo coordinación</h2><p>Esta pantalla es para dar de alta y gestionar al equipo.</p><a class="button" href="escritorio.html">Volver al escritorio</a></div>`; document.getElementById("loading").hidden = true; app.hidden = false; return; }
 
@@ -30,8 +31,8 @@
     const active = S.staff.filter(x => x.active), pending = S.invites.filter(x => !x.accepted_at && new Date(x.expires_at) > Date.now());
     const students = new Set(S.groups.flatMap(g => g.memberships.filter(m => m.role !== "teacher").map(m => m.user_id))).size;
     app.innerHTML = `
-      <div class="esc-top"><div><h1>Equipo</h1><p>Quién da clase, con qué rol y en qué grupos.</p></div><div class="r"><button class="button teal" id="b-invite">+ Invitar a alguien</button></div></div>
-      <div class="stats"><div class="stat"><b>${active.filter(x => x.role === "teacher").length}</b><span>maestros activos</span></div><div class="stat"><b>${active.filter(x => x.role === "coordinator").length}</b><span>coordinación</span></div><div class="stat"><b>${pending.length}</b><span>invitaciones pendientes</span></div><div class="stat"><b>${students}</b><span>alumnos en total</span></div></div>
+      <div class="eq-hello"><div><h1>Quién da clase, con qué rol y en qué grupos</h1><p>Gestiona el equipo de maestros y colaboradores del campus.</p></div><button class="button teal" id="b-invite">＋ Invitar a alguien</button></div>
+      <div class="stats"><div class="stat"><span class="sic">🎓</span><span><b>${active.filter(x => x.role === "teacher").length}</b><span>maestros activos</span></span></div><div class="stat"><span class="sic gold">👥</span><span><b>${active.filter(x => x.role === "coordinator").length}</b><span>coordinación</span></span></div><div class="stat"><span class="sic">✉️</span><span><b>${pending.length}</b><span>invitaci${pending.length === 1 ? "ón pendiente" : "ones pendientes"}</span></span></div><div class="stat"><span class="sic green">👥</span><span><b>${students}</b><span>alumnos</span></span></div></div>
       <div class="eq-tabs"><button data-tab="staff" aria-pressed="${S.tab === "staff"}">Equipo (${S.staff.length})</button><button data-tab="invites" aria-pressed="${S.tab === "invites"}">Invitaciones (${pending.length})</button><button data-tab="students" aria-pressed="${S.tab === "students"}">Alumnos (${students})</button><button data-tab="courses" aria-pressed="${S.tab === "courses"}">Cursos libres</button></div>
       <div class="eq-card" id="body"></div>`;
     app.querySelector("#b-invite").addEventListener("click", () => inviteDialog());
@@ -44,12 +45,12 @@
     const rows = S.staff.map(p => {
       const gs = S.groups.filter(g => g.teacher_id === p.id);
       const inv = S.invites.find(i => i.accepted_by === p.id);
-      const state = !p.active ? `<span class="tag closed">Desactivado</span>` : gs.length || p.role === "coordinator" ? `<span class="tag">Activo</span>` : inv ? `<span class="tag pill blue" style="background:#e6eefc;color:#1d4ed8">Invitación aceptada</span>` : `<span class="tag">Sin grupo</span>`;
+      const state = !p.active ? `<span class="stt off">Desactivado</span>` : gs.length || p.role === "coordinator" ? `<span class="stt on">Activo</span>` : inv ? `<span class="stt accepted">Invitación aceptada</span>` : `<span class="stt nogroup">Sin grupo</span>`;
       return `<tr class="${p.active ? "" : "inactive"}"><td><div class="who"><span class="avatar teal">${esc(initials(p.full_name))}</span><span><b>${esc(p.full_name)}${p.id === me.user.id ? " (tú)" : ""}</b><small>${esc(p.email || "")}</small></span></div></td>
         <td><span class="tag" style="${p.role === "coordinator" ? "background:#faf0d6;color:#7a5c14" : ""}">${ROLE[p.role]}</span></td>
         <td class="groups">${p.role === "coordinator" && !gs.length ? `<span class="tag closed">Todos</span>` : gs.map(g => `<span style="--gc:${gcolor(g)}">${esc(g.name)}</span>`).join("") || `<span class="tag closed">Sin grupo</span>`}</td>
         <td>${S.last[p.id] ? fmtDate(S.last[p.id], { day: "numeric", month: "short" }) : "—"}</td><td>${state}</td>
-        <td><div class="acts">${p.active ? `<button data-groups="${p.id}">Grupos</button>${p.id !== me.user.id ? `<button data-role="${p.id}">Rol</button><button data-off="${p.id}">Desactivar</button>` : ""}` : `<button data-on="${p.id}">Reactivar</button>`}</div></td></tr>`;
+        <td><div class="acts">${p.active ? `<button data-groups="${p.id}">👥 Grupos</button>${p.id !== me.user.id ? `<button data-role="${p.id}">✏️ Rol</button><button class="danger" data-off="${p.id}">🗑 Desactivar</button>` : ""}` : `<button data-on="${p.id}">Reactivar</button>`}</div></td></tr>`;
     });
     body.innerHTML = `<table><tr><th>Persona</th><th>Rol</th><th>Grupos</th><th>Última clase</th><th>Estado</th><th></th></tr>${rows.join("")}</table>`;
     body.querySelectorAll("[data-groups]").forEach(b => b.addEventListener("click", () => groupsDialog(S.staff.find(p => p.id === b.dataset.groups))));
@@ -61,10 +62,10 @@
   function renderInvites() {
     const body = app.querySelector("#body");
     const rows = S.invites.map(i => {
-      const expired = new Date(i.expires_at) < Date.now(), st = i.accepted_at ? `<span class="tag">Aceptada ${fmtDate(i.accepted_at, { day: "numeric", month: "short" })}</span>` : expired ? `<span class="tag closed">Caducada</span>` : `<span class="tag" style="background:#faf0d6;color:#7a5c14">Enviada · ${fmtDate(i.created_at, { day: "numeric", month: "short" })}</span>`;
+      const expired = new Date(i.expires_at) < Date.now(), st = i.accepted_at ? `<span class="stt on">Aceptada ${fmtDate(i.accepted_at, { day: "numeric", month: "short" })}</span>` : expired ? `<span class="stt off">Caducada</span>` : `<span class="stt pending">Invitación enviada · ${fmtDate(i.created_at, { day: "numeric", month: "short" })}</span>`;
       const g = S.groups.find(x => x.id === i.group_id);
       return `<tr class="${i.accepted_at ? "inactive" : ""}"><td><div class="who"><span class="avatar teal">${esc(initials(i.full_name || i.email))}</span><span><b>${esc(i.full_name || "")}</b><small>${esc(i.email)}</small></span></div></td><td><span class="tag">${ROLE[i.role]}</span></td><td>${g ? esc(g.name) : "—"}</td><td>${st}</td>
-        <td><div class="acts">${i.accepted_at ? "" : `<button data-copy="${i.token}">Copiar enlace</button><button data-wa="${i.id}">WhatsApp</button><button data-renew="${i.id}">${expired ? "Renovar" : "Reenviar"}</button>`}<button data-del="${i.id}">Borrar</button></div></td></tr>`;
+        <td><div class="acts">${i.accepted_at ? "" : `<button data-copy="${i.token}">🔗 Copiar enlace</button><button data-wa="${i.id}">💬 WhatsApp</button><button data-renew="${i.id}">✉️ ${expired ? "Renovar" : "Reenviar"}</button>`}<button class="danger" data-del="${i.id}">🗑 Borrar</button></div></td></tr>`;
     });
     body.innerHTML = rows.length ? `<table><tr><th>Persona</th><th>Rol</th><th>Grupo</th><th>Estado</th><th></th></tr>${rows.join("")}</table>` : `<p class="subtle" style="padding:16px">No hay invitaciones. Pulsa «Invitar a alguien».</p>`;
     body.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", () => copy(inviteLink(b.dataset.copy))));
@@ -83,18 +84,19 @@
       <div class="live-controls"><button class="button secondary small" id="l-copy">Copiar enlace</button><a class="button small" target="_blank" rel="noopener" href="${whatsappMessage(inviteText(i))}">Enviar por WhatsApp</a><a class="button secondary small" href="mailto:${esc(i.email)}?subject=${encodeURIComponent("Alta en el campus " + Campus.cfg.brand)}&body=${encodeURIComponent(inviteText(i))}">Enviar por correo</a></div>`, d => d.querySelector("#l-copy").addEventListener("click", () => copy(inviteLink(i.token))));
   }
   function inviteDialog() {
+    dialog.classList.add("side-panel"); dialog.addEventListener("close", () => dialog.classList.remove("side-panel"), { once: true });
     openDialog("Invitar a alguien", `<p class="subtle" style="margin-top:0">Recibirá un enlace; al abrirlo entra con su correo y ya tiene su rol. Sin contraseñas que enviar.</p><div class="inline-form">
       <div class="row"><div class="field"><label for="i-name">Nombre y apellido</label><input id="i-name"></div><div class="field"><label for="i-email">Correo</label><input id="i-email" type="email"></div></div>
       <div class="row"><div class="field"><label for="i-role">Rol</label><select id="i-role"><option value="teacher">Maestro/a</option><option value="coordinator">Coordinación</option></select></div><div class="field"><label for="i-group">Grupo (opcional)</label><select id="i-group"><option value="">Sin grupo por ahora</option>${S.groups.map(g => `<option value="${g.id}">${esc(g.name)}${g.teacher_id ? "" : " · sin maestro"}</option>`).join("")}</select></div></div>
       <div class="field"><label for="i-msg">Mensaje (opcional)</label><input id="i-msg" placeholder="Bienvenida al equipo"></div>
-      <p class="form-error" id="i-err"></p><button class="button teal" id="i-go">Crear invitación</button></div>`, d => d.querySelector("#i-go").addEventListener("click", async () => {
+      <p class="form-error" id="i-err"></p><div class="live-controls"><button class="button secondary" id="i-cancel">Cancelar</button><button class="button teal" id="i-go">Invitar</button></div></div>`, d => { d.querySelector("#i-cancel").addEventListener("click", () => dialog.close()); d.querySelector("#i-go").addEventListener("click", async () => {
       const email = d.querySelector("#i-email").value.trim().toLowerCase(), name = d.querySelector("#i-name").value.trim(); const err = d.querySelector("#i-err");
       if (!email.includes("@")) { err.textContent = "Escribe un correo válido."; return; }
       if (S.staff.some(p => (p.email || "").toLowerCase() === email && p.active)) { err.textContent = "Esa persona ya está en el equipo."; return; }
       const { data: t, error } = await sb.rpc("invite_staff", { p_email: email, p_name: name, p_role: d.querySelector("#i-role").value, p_group: d.querySelector("#i-group").value || null, p_message: d.querySelector("#i-msg").value.trim() || null });
       if (error) { err.textContent = error.message; return; }
       await load(); const i = S.invites.find(x => x.token === t); S.tab = "invites"; render(); if (i) showLinkDialog(i);
-    }));
+    }); });
   }
   function roleDialog(p) {
     openDialog("Rol de " + p.full_name, `<div class="inline-form"><div class="field"><label for="r-role">Rol</label><select id="r-role"><option value="teacher" ${p.role === "teacher" ? "selected" : ""}>Maestro/a</option><option value="coordinator" ${p.role === "coordinator" ? "selected" : ""}>Coordinación</option></select></div><p class="meta">Coordinación ve todos los grupos, invita al equipo y cambia roles.</p><button class="button" id="r-go">Guardar</button></div>`, d => d.querySelector("#r-go").addEventListener("click", async () => { const { error } = await sb.from("profiles").update({ role: d.querySelector("#r-role").value }).eq("id", p.id); if (error) toast(error.message); dialog.close(); load(); }));

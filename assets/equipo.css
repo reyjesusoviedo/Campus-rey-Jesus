@@ -17,3 +17,33 @@ tr.inactive td { opacity: .55; }
 .link-box { background: #f2f7fc; border: 1px dashed var(--teal-dark); border-radius: 10px; padding: 10px; font-size: 12px; word-break: break-all; margin: 10px 0; }
 .pill.blue { background: #e6eefc; color: #1d4ed8; }
 @media (max-width: 900px) { .stats { grid-template-columns: 1fr 1fr; } }
+
+/* Equipo · estilo panel */
+.eq-hello { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-bottom: 14px; }
+.eq-hello h1 { margin: 0; font-family: Inter, sans-serif; font-weight: 900; font-size: 1.8rem; color: #0b2f6b; letter-spacing: -.02em; }
+.eq-hello p { margin: 2px 0 0; color: var(--muted); font-size: 15px; }
+.eq-hello .button.teal { margin-left: auto; background: #0c70bb; border-radius: 12px; padding: 12px 20px; font-weight: 800; box-shadow: 0 10px 24px rgba(12,112,187,.35); }
+.stats { grid-template-columns: repeat(4, 1fr); }
+.stat { display: flex; align-items: center; gap: 12px; border-radius: 16px; box-shadow: 0 6px 18px rgba(11,47,107,.06); }
+.stat::before, .stat::after { display: none !important; }
+.stat .sic { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; background: #e3eefa; flex: none; }
+.stat .sic.gold { background: #faf0d6; } .stat .sic.green { background: #dff5ea; }
+.stat b { font-size: 1.7rem; color: #0b2f6b; } .stat span { font-size: 13px; }
+.eq-tabs button { padding: 9px 18px; font-size: 15px; } .eq-tabs button[aria-pressed="true"] { background: #0c70bb; border-color: #0c70bb; }
+.eq-card { border-radius: 16px; box-shadow: 0 6px 18px rgba(11,47,107,.06); }
+.eq-card th { background: #f5f8fc; color: #0b2f6b; font-size: 12px; letter-spacing: .04em; text-transform: none; font-weight: 800; padding: 12px 14px; }
+.eq-card td { padding: 12px 14px; }
+.who .avatar { width: 44px; height: 44px; font-size: 13px; background: #bcd6ec; color: #0b2f6b; } .who img.avatar { object-fit: cover; }
+.who b { color: #0b2f6b; font-weight: 800; }
+.tag { border-radius: 10px; padding: 5px 12px; font-weight: 700; }
+.groups span { border-left: 0; background: #e3eefa; color: #0b2f6b; font-weight: 700; padding: 5px 12px; border-radius: 10px; position: relative; }
+.groups span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--gc, #0c70bb); margin-right: 6px; vertical-align: middle; }
+.stt { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 10px; font-weight: 800; font-size: 13px; }
+.stt::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.stt.on { background: #dff5ea; color: #1a8f57; } .stt.pending { background: #fff3d6; color: #9a6a00; } .stt.off { background: #e9edf0; color: #566171; } .stt.nogroup { background: #e9edf0; color: #566171; } .stt.accepted { background: #e6eefc; color: #1d4ed8; }
+.acts button { display: inline-flex; align-items: center; gap: 6px; border-radius: 10px; padding: 7px 12px; color: #0b2f6b; }
+.acts button.danger { color: #c0263a; }
+/* diálogo Invitar como panel lateral */
+dialog.side-panel { position: fixed; inset: 0 0 0 auto; margin: 0; height: 100%; max-height: 100%; width: min(460px, 94vw); border-radius: 18px 0 0 18px; box-shadow: -20px 0 60px rgba(0,0,0,.25); overflow: auto; }
+dialog.side-panel::backdrop { background: rgba(11,35,64,.35); }
+@media (max-width: 700px) { dialog.side-panel { width: 100%; border-radius: 0; } .stats { grid-template-columns: 1fr 1fr; } .eq-card th:nth-child(4), .eq-card td:nth-child(4) { display: none; } }

@@ -30,3 +30,6 @@
 .topbar .tb-bell .tb-alerts a:first-child { border-top: 0; } .topbar .tb-bell .tb-alerts .meta { padding: 10px 12px; }
 .topbar .tb-me { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; } .topbar .tb-me .avatar { width: 32px; height: 32px; font-size: 11px; }
 @media (max-width: 900px) { .topbar .tb-search { display: none; } .topbar .tb-me span { display: none; } .sidebar .sb-logo .brand-mark, .sidebar .sb-logo img { width: 64px; height: 64px; font-size: 26px; } }
+
+.avatar.big { width: 64px; height: 64px; font-size: 20px; }
+.sidebar .sb-user img.avatar, .topbar .tb-me img.avatar { border-radius: 50%; }

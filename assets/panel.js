@@ -1,7 +1,7 @@
 (async () => {
   const { sb, esc, fmtDate, toast, requireUser, renderShell, whatsappMessage, copy, initials } = Campus;
   const me = await requireUser();
-  renderShell(me, "panel"); if (window.Shell && ["coordinator", "teacher"].includes(me.profile.role)) Shell.render(me, "panel", "Grupos");
+  renderShell(me, "panel"); if (window.Shell) Shell.render(me, ["coordinator", "teacher"].includes(me.profile.role) ? "panel" : "resumen", ["coordinator", "teacher"].includes(me.profile.role) ? "Grupos" : "Mi campus");
   const app = document.getElementById("app");
   const dialog = document.getElementById("dialog");
   document.getElementById("dialog-close").addEventListener("click", () => dialog.close());
@@ -40,6 +40,7 @@
     return (data || []).filter(e => !e.review_until || new Date(e.review_until) > Date.now());
   }
   function render(groups) {
+    if (!staff) return renderStudent(groups);
     const next = groups.flatMap(g => g.sessions.map(s => ({ ...s, group: g })))
       .filter(s => s.status !== "closed" && new Date(s.starts_at) > Date.now() - 3 * 3600e3)
       .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))[0];
@@ -92,6 +93,46 @@
       const { error } = await sb.from("groups").delete().eq("id", b.dataset.delGroup);
       if (error) { toast("No se pudo borrar: " + error.message); return; } toast("Grupo borrado"); load();
     }));
+  }
+
+
+  // ---------- Mi campus (alumno) ----------
+  let S_pending = [], S_mats = [];
+  async function renderStudent(groups) {
+    const all = groups.flatMap(g => g.sessions.map(s => ({ ...s, group: g })));
+    const upcoming = all.filter(s => s.status !== "closed" && new Date(s.starts_at) > Date.now() - 3 * 3600e3).sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at));
+    const wk0 = new Date(); wk0.setHours(0, 0, 0, 0); wk0.setDate(wk0.getDate() - (wk0.getDay() + 6) % 7); const wk1 = new Date(wk0); wk1.setDate(wk0.getDate() + 7);
+    const thisWeek = all.filter(s => new Date(s.starts_at) >= wk0 && new Date(s.starts_at) < wk1).length;
+    const active = S_courses.filter(e => !e.completed_at), certs = S_courses.filter(e => e.completed_at);
+    const first = me.profile.full_name.split(" ")[0]; const hour = new Date().getHours(), greet = hour < 13 ? "Buenos días" : hour < 20 ? "Buenas tardes" : "Buenas noches";
+    const dayLabel = d => { const x = new Date(d), t = new Date(); const same = x.toDateString() === t.toDateString(); const tm = new Date(t); tm.setDate(t.getDate() + 1); return same ? "Hoy" : x.toDateString() === tm.toDateString() ? "Mañana" : x.toLocaleDateString("es-ES", { weekday: "long" }); };
+    app.innerHTML = `
+      <div class="hello"><div><h1>${greet}, <span>${esc(first)}</span></h1><p>Continúa aprendiendo y creciendo a tu ritmo.</p></div>
+        <div class="new" style="display:flex;gap:8px"><a href="index.html#cursos" style="display:inline-block;background:#0c70bb;color:#fff;border-radius:12px;padding:12px 20px;font-weight:800;text-decoration:none">＋ Explorar cursos</a><button class="button secondary" id="join-code">Tengo un código</button></div></div>
+      <div class="rkpis">
+        <a class="rkpi" href="#cursos"><span class="ic">🎓</span><span class="kt"><span>Cursos y grupos</span><b>${active.length + groups.length}</b></span><span class="arr">›</span></a>
+        <a class="rkpi" href="#clases"><span class="ic">🗓</span><span class="kt"><span>Clases esta semana</span><b>${thisWeek}</b></span><span class="arr">›</span></a>
+        <a class="rkpi" href="#tareas"><span class="ic g">📝</span><span class="kt"><span>Tareas pendientes</span><b>${S_pending.length}</b></span><span class="arr">›</span></a>
+        <a class="rkpi" href="#certificados"><span class="ic">🏅</span><span class="kt"><span>Certificados</span><b>${certs.length}</b></span><span class="arr">›</span></a>
+      </div>
+      <div class="rgrid">
+        <div class="rcard" id="cursos"><h3>📘 Continuar aprendiendo</h3>
+          ${active.length || groups.length ? active.map(e => { const n = (e.course?.lessons || []).length, d = (e.progress?.done || []).length, nxt = e.course?.lessons?.[Math.min(d, Math.max(n - 1, 0))]; return `<div class="next"><span class="ic" style="width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:#dff5ea;flex:none">📗</span><span style="flex:1"><b>${esc(e.course?.title || "")}</b><small>${n ? `${d} de ${n} lecciones${nxt ? " · Siguiente: " + esc(nxt.title || "") : ""}` : "Curso a tu ritmo"}${e.ends_at ? " · hasta " + fmtDate(e.ends_at, { day: "numeric", month: "short" }) : ""}</small></span><a class="button small" href="curso.html?e=${e.id}">▶ Continuar</a></div>`; }).join("") + groups.map(g => { const n = upcoming.find(s => s.group.id === g.id); return `<div class="next"><span class="ic" style="width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:#e3eefa;flex:none">👥</span><span style="flex:1"><b>${esc(g.name)}</b><small>${esc(g.teacher?.full_name || "")}${g.schedule_text ? " · " + esc(g.schedule_text) : ""}${n ? " · próxima clase " + fmtDate(n.starts_at, { weekday: "short", hour: "2-digit", minute: "2-digit" }) : ""}</small></span>${n ? `<a class="button ${n.status === "live" ? "gold" : "secondary"} small" href="sesion.html?id=${n.id}">${n.status === "live" ? "Entrar" : "Ver clase"}</a>` : ""}</div>`; }).join("") : `<p class="meta">Todavía no estás en ningún curso ni grupo. Pide un código a tu maestro o <a href="index.html#cursos">explora los cursos</a>.</p>`}</div>
+        <div class="rcard" id="clases"><h3>🕒 Próximas clases</h3>
+          ${upcoming.length ? upcoming.slice(0, 4).map(s => `<div class="next"><span class="h">${dayLabel(s.starts_at)}<br><small>${new Date(s.starts_at).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</small></span><span style="flex:1"><b>${esc(s.title)}</b><small>${esc(s.group.name)} · 📹 Aula online</small></span><a class="button small ${s.status === "live" ? "gold" : ""}" href="sesion.html?id=${s.id}">Entrar</a></div>`).join("") : `<p class="meta">Sin clases próximas.</p>`}</div>
+        <div class="rcard" id="tareas"><h3>📝 Tareas pendientes</h3>
+          ${S_pending.length ? S_pending.slice(0, 5).map(t => `<div class="next"><span class="ic" style="width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:#dff5ea;flex:none">📄</span><span style="flex:1"><b>${esc(t.title)}</b><small>${esc(t.session_title)} · clase del ${fmtDate(t.ended_at, { day: "numeric", month: "short" })}</small></span><a class="st warn" style="text-decoration:none" href="sesion.html?id=${t.session_id}">Completar</a></div>`).join("") : `<p class="meta">No tienes tareas pendientes. 🙌</p>`}</div>
+        <div class="rcard" id="materiales"><h3>📁 Materiales recientes</h3>
+          ${S_mats.length ? S_mats.map(m => `<a class="next" href="sesion.html?id=${m.session_id}"><span class="ic" style="width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:${/\.pdf$/i.test(m.storage_path || "") ? "#fde2e6" : "#e3eefa"};flex:none">${m.kind === "link" ? "🔗" : /\.pdf$/i.test(m.storage_path || "") ? "📕" : m.kind === "text" ? "📝" : "📘"}</span><span style="flex:1"><b>${esc(m.title)}</b><small>${esc(m.session_title)}</small></span></a>`).join("") : `<p class="meta">Aún no hay materiales.</p>`}</div>
+        <div class="rcard" id="progreso"><h3>📈 Mi progreso</h3>
+          ${S_courses.length ? S_courses.map(e => { const n = (e.course?.lessons || []).length, d = (e.progress?.done || []).length, pct = n ? Math.round(d / n * 100) : 0; return `<div style="padding:8px 0;border-top:1px solid #edf1f6"><b>${esc(e.course?.title || "")}</b> <span class="meta">${pct}%</span><div class="pbar" style="display:block;width:100%;margin:6px 0 0"><i style="width:${pct}%"></i></div></div>`; }).join("") : `<p class="meta">Cuando empieces un curso verás aquí tu avance.</p>`}</div>
+        <div class="rcard" id="certificados"><h3>🏅 Certificados</h3>
+          ${certs.length ? certs.map(e => `<div class="next"><span class="ic" style="width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:#faf0d6;flex:none">🏅</span><span style="flex:1"><b>${esc(e.course?.title || "")}</b><small>Terminado el ${fmtDate(e.completed_at, { day: "numeric", month: "long" })}</small></span><a class="button secondary small" href="certificado.html?e=${e.id}" target="_blank">Ver</a></div>`).join("") : `<p class="meta">Al terminar un curso, tu certificado aparecerá aquí.</p>`}</div>
+      </div>
+      <div class="rcard" style="margin-top:14px"><h3>⚡ Accesos rápidos</h3><div class="quick" style="grid-template-columns:repeat(4,1fr)"><a href="#clases"><span class="ic">🗓</span>Ver calendario<span class="arr">›</span></a><button id="msg-soon"><span class="ic g">✉️</span>Mis mensajes <small class="meta">· próx.</small></button><button id="com-soon"><span class="ic">👥</span>Comunidad <small class="meta">· próx.</small></button><a href="#certificados"><span class="ic g">🏅</span>Mis certificados<span class="arr">›</span></a></div></div>`;
+    document.getElementById("join-code").addEventListener("click", joinDialog);
+    document.getElementById("msg-soon").addEventListener("click", () => toast("Mensajes: próximamente"));
+    document.getElementById("com-soon").addEventListener("click", () => toast("Comunidad: próximamente"));
   }
 
   function groupCard(g) {
@@ -271,7 +312,7 @@
   }
 
   let S_courses = [];
-  if (!staff) S_courses = await myCourses();
+  if (!staff) { S_courses = await myCourses(); const [pp, mm] = await Promise.all([sb.rpc("student_pending"), sb.rpc("recent_materials", { p_limit: 4 })]); S_pending = pp.data || []; S_mats = mm.data || []; }
   await load();
   document.getElementById("loading").hidden = true;
   app.hidden = false;
