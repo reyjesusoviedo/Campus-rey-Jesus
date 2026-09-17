@@ -1,7 +1,7 @@
 (async () => {
   const { sb, esc, fmtDate, toast, requireUser, renderShell, copy } = Campus;
   const me = await requireUser();
-  renderShell(me, "biblioteca");
+  renderShell(me, "biblioteca"); if (window.Shell && ["coordinator", "teacher"].includes(me.profile.role)) Shell.render(me, "biblioteca", "Biblioteca");
   const staff = me.profile.role === "teacher" || me.profile.role === "coordinator";
   if (!staff) document.querySelectorAll("[data-staff-only]").forEach(a => a.remove());
   const app = document.getElementById("app"), dialog = document.getElementById("dialog");

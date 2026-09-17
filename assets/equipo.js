@@ -1,7 +1,7 @@
 (async () => {
   const { sb, esc, fmtDate, toast, requireUser, renderShell, initials, whatsappMessage, copy } = Campus;
   const me = await requireUser();
-  renderShell(me, "equipo");
+  renderShell(me, "equipo"); if (window.Shell && ["coordinator", "teacher"].includes(me.profile.role)) Shell.render(me, "equipo", "Equipo");
   const app = document.getElementById("app"), dialog = document.getElementById("dialog");
   document.getElementById("dialog-close").addEventListener("click", () => dialog.close());
   function openDialog(title, html, onMount) { document.getElementById("dialog-title").textContent = title; document.getElementById("dialog-body").innerHTML = html; dialog.showModal(); onMount && onMount(dialog); }
@@ -10,9 +10,9 @@
   const PALETTE = ["#0f766e", "#2563eb", "#b45309", "#7c3aed", "#be185d", "#0e7490", "#4d7c0f", "#9f1239"];
   const gcolor = g => g.color || PALETTE[Math.abs([...g.id].reduce((h, c) => h * 31 + c.charCodeAt(0), 7)) % PALETTE.length];
   const ROLE = { teacher: "Maestro/a", coordinator: "Coordinación" };
-  const S = { staff: [], groups: [], invites: [], last: {}, tab: "staff", students: null, q: "" };
+  const S = { staff: [], groups: [], invites: [], last: {}, tab: new URLSearchParams(location.search).get("tab") || "staff", students: null, q: "" };
   const baseUrl = () => location.href.replace(/[^/]*$/, "");
-  const inviteLink = t => baseUrl() + "index.html?equipo=" + t;
+  const inviteLink = t => baseUrl() + "entrar.html?equipo=" + t;
 
   async function load() {
     const [p, g, i, l] = await Promise.all([
@@ -32,11 +32,11 @@
     app.innerHTML = `
       <div class="esc-top"><div><h1>Equipo</h1><p>Quién da clase, con qué rol y en qué grupos.</p></div><div class="r"><button class="button teal" id="b-invite">+ Invitar a alguien</button></div></div>
       <div class="stats"><div class="stat"><b>${active.filter(x => x.role === "teacher").length}</b><span>maestros activos</span></div><div class="stat"><b>${active.filter(x => x.role === "coordinator").length}</b><span>coordinación</span></div><div class="stat"><b>${pending.length}</b><span>invitaciones pendientes</span></div><div class="stat"><b>${students}</b><span>alumnos en total</span></div></div>
-      <div class="eq-tabs"><button data-tab="staff" aria-pressed="${S.tab === "staff"}">Equipo (${S.staff.length})</button><button data-tab="invites" aria-pressed="${S.tab === "invites"}">Invitaciones (${pending.length})</button><button data-tab="students" aria-pressed="${S.tab === "students"}">Alumnos (${students})</button></div>
+      <div class="eq-tabs"><button data-tab="staff" aria-pressed="${S.tab === "staff"}">Equipo (${S.staff.length})</button><button data-tab="invites" aria-pressed="${S.tab === "invites"}">Invitaciones (${pending.length})</button><button data-tab="students" aria-pressed="${S.tab === "students"}">Alumnos (${students})</button><button data-tab="courses" aria-pressed="${S.tab === "courses"}">Cursos libres</button></div>
       <div class="eq-card" id="body"></div>`;
     app.querySelector("#b-invite").addEventListener("click", () => inviteDialog());
     app.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => { S.tab = b.dataset.tab; render(); }));
-    if (S.tab === "staff") renderStaff(); else if (S.tab === "invites") renderInvites(); else renderStudents();
+    if (S.tab === "staff") renderStaff(); else if (S.tab === "invites") renderInvites(); else if (S.tab === "courses") renderCourses(); else renderStudents();
   }
 
   function renderStaff() {
@@ -108,6 +108,18 @@
     })));
   }
 
+  async function renderCourses() {
+    const body = app.querySelector("#body"); body.innerHTML = `<p class="meta" style="padding:16px">Cargando…</p>`;
+    const [{ data: rows, error }, { data: qs }] = await Promise.all([sb.rpc("course_students"), sb.from("course_questions").select("*, course:courses(title), author:profiles(full_name)").is("answer", null).order("created_at")]);
+    if (error) { body.innerHTML = `<p class="notice">${esc(error.message)}. ¿Se ejecutó el parche de cursos?</p>`; return; }
+    const list = rows || [];
+    body.innerHTML = `<div style="padding:10px 14px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input type="search" id="cs-q" placeholder="Buscar por nombre, correo o curso…" style="flex:1;min-width:200px"><button class="button secondary small" id="cs-csv">Exportar CSV</button></div>
+      ${(qs || []).length ? `<div style="padding:12px 14px"><h3 style="font-family:Georgia,serif;font-size:1rem;margin:0 0 6px">Preguntas sin responder (${qs.length})</h3>${qs.map(q => `<div class="qa" style="display:flex;gap:8px;align-items:flex-start"><div style="flex:1"><b>${esc(q.author?.full_name || "")}</b> · <span class="meta">${esc(q.course?.title || "")}</span><br>${esc(q.text)}</div><button class="button secondary small" data-reply="${q.id}">Responder</button></div>`).join("")}</div>` : ""}
+      <table id="cs-table"><tr><th>Alumno</th><th>Curso</th><th>Progreso</th><th>Plazo</th><th>Estado</th></tr>${list.map(r => `<tr data-row="${esc((r.full_name + " " + r.email + " " + r.course_title).toLowerCase())}"><td><div class="who"><span class="avatar teal">${esc(initials(r.full_name))}</span><span><b>${esc(r.full_name)}</b><small>${esc(r.email || "")}${r.phone ? " · " + esc(r.phone) : ""}</small></span></div></td><td>${esc(r.course_title)}</td><td>${r.done}/${r.total}</td><td>${r.ends_at ? fmtDate(r.ends_at, { day: "numeric", month: "short" }) : "—"}</td><td>${r.completed_at ? `<span class="tag">Terminado</span>` : new Date(r.ends_at) < Date.now() ? `<span class="tag closed">Plazo pasado</span>` : `<span class="tag" style="background:#e6eefc;color:#1d4ed8">En curso</span>`}</td></tr>`).join("") || `<tr><td colspan="5" class="meta">Nadie apuntado todavía.</td></tr>`}</table>`;
+    body.querySelector("#cs-q").addEventListener("input", e => { const q = e.target.value.toLowerCase(); body.querySelectorAll("[data-row]").forEach(tr => tr.hidden = q && !tr.dataset.row.includes(q)); });
+    body.querySelector("#cs-csv").addEventListener("click", () => { const csv = ["Nombre;Correo;Teléfono;Curso;Hechas;Total;Inicio;Fin;Terminado"].concat(list.map(r => [r.full_name, r.email, r.phone, r.course_title, r.done, r.total, r.started_at?.slice(0, 10), r.ends_at?.slice(0, 10), r.completed_at ? "sí" : "no"].map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(";"))).join("\n"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv" })); a.download = "alumnos-cursos-libres.csv"; a.click(); });
+    body.querySelectorAll("[data-reply]").forEach(b => b.addEventListener("click", () => { const q = (qs || []).find(x => x.id === b.dataset.reply); openDialog("Responder a " + (q.author?.full_name || ""), `<p class="subtle" style="margin-top:0">${esc(q.text)}</p><textarea id="rp" rows="4" style="width:100%"></textarea><div class="live-controls"><button class="button" id="rp-go">Enviar</button></div>`, d => d.querySelector("#rp-go").addEventListener("click", async () => { const { error } = await sb.from("course_questions").update({ answer: d.querySelector("#rp").value.trim(), answered_by: me.user.id, answered_at: new Date().toISOString() }).eq("id", q.id); if (error) toast(error.message); dialog.close(); renderCourses(); })); }));
+  }
   async function renderStudents() {
     const body = app.querySelector("#body");
     if (!S.students) {

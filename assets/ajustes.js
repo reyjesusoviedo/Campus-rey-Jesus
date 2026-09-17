@@ -1,7 +1,7 @@
 (async () => {
   const { sb, esc, toast, requireUser, renderShell, loadSettings, cfg } = Campus;
   const me = await requireUser();
-  renderShell(me, "ajustes");
+  renderShell(me, "ajustes"); if (window.Shell && ["coordinator", "teacher"].includes(me.profile.role)) Shell.render(me, "ajustes", "Configuración");
   const app = document.getElementById("app"), dialog = document.getElementById("dialog");
   document.getElementById("dialog-close").addEventListener("click", () => dialog.close());
   function openDialog(title, html, onMount) { document.getElementById("dialog-title").textContent = title; document.getElementById("dialog-body").innerHTML = html; dialog.showModal(); onMount && onMount(dialog); }

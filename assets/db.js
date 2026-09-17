@@ -48,7 +48,7 @@
   async function requireUser() {
     await loadSettings();
     let me = await currentProfile();
-    if (!me) { location.replace("index.html"); return new Promise(() => {}); }
+    if (!me) { location.replace("entrar.html"); return new Promise(() => {}); }
     let course = null; try { course = localStorage.getItem("pendingCourse"); } catch {}
     if (course && !me.user.is_anonymous) {
       try { localStorage.removeItem("pendingCourse"); } catch {}
@@ -60,7 +60,7 @@
       const { data, error } = await sb.rpc("accept_staff_invite", { p_token: token });
       try { localStorage.removeItem("staffInvite"); } catch {}
       if (error) toast("Invitación: " + error.message);
-      else if (data && !data.already) { toast("Ya formas parte del equipo"); me = await currentProfile(); if (!/escritorio/.test(location.pathname)) { location.replace("escritorio.html"); return new Promise(() => {}); } }
+      else if (data && !data.already) { toast("Ya formas parte del equipo"); me = await currentProfile(); if (!/resumen/.test(location.pathname)) { location.replace("resumen.html"); return new Promise(() => {}); } }
     }
     return me;
   }
@@ -74,7 +74,7 @@
       ${anon ? `<button class="button small" style="margin-top:12px;width:100%" data-keep>Guardar mi acceso</button>` : ""}
       <button class="button secondary small" style="margin-top:12px;width:100%" data-rename>Cambiar mi nombre</button>
       <button class="button secondary small" style="margin-top:8px;width:100%" data-logout>Salir</button>`;
-    document.querySelector("[data-logout]")?.addEventListener("click", async () => { await sb.auth.signOut(); location.replace("index.html"); });
+    document.querySelector("[data-logout]")?.addEventListener("click", async () => { await sb.auth.signOut(); location.replace("entrar.html"); });
     document.querySelector("[data-keep]")?.addEventListener("click", async () => {
       const email = prompt("Escribe tu correo para conservar tu acceso al campus:");
       if (!email || !email.includes("@")) return;

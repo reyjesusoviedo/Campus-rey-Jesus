@@ -1,7 +1,7 @@
 (async () => {
   const { sb, esc, fmtDate, toast, requireUser, renderShell, whatsappMessage, copy, initials } = Campus;
   const me = await requireUser();
-  renderShell(me, "panel");
+  renderShell(me, "panel"); if (window.Shell && ["coordinator", "teacher"].includes(me.profile.role)) Shell.render(me, "panel", "Grupos");
   const app = document.getElementById("app");
   const dialog = document.getElementById("dialog");
   document.getElementById("dialog-close").addEventListener("click", () => dialog.close());
@@ -9,7 +9,7 @@
   const role = me.profile.role;
   const staff = role === "coordinator" || role === "teacher";
   if (!staff) { document.querySelectorAll("[data-staff-only]").forEach(a => a.remove()); const l = document.querySelector('[data-nav="panel"]'); if (l) { l.textContent = "Mis grupos"; l.href = "panel.html"; } }
-  if (staff && !new URLSearchParams(location.search).get("lista")) { location.replace("escritorio.html"); return; }
+  if (staff && !new URLSearchParams(location.search).get("lista")) { location.replace("resumen.html"); return; }
 
   function openDialog(title, html, onMount) {
     document.getElementById("dialog-title").textContent = title;
@@ -35,6 +35,10 @@
     render(groups || []);
   }
 
+  async function myCourses() {
+    const { data } = await sb.from("enrollments").select("id, completed_at, ends_at, review_until, progress, course:courses(title, lessons, type)").eq("user_id", me.user.id).order("started_at", { ascending: false });
+    return (data || []).filter(e => !e.review_until || new Date(e.review_until) > Date.now());
+  }
   function render(groups) {
     const next = groups.flatMap(g => g.sessions.map(s => ({ ...s, group: g })))
       .filter(s => s.status !== "closed" && new Date(s.starts_at) > Date.now() - 3 * 3600e3)
@@ -51,6 +55,7 @@
         <button class="button ${staff ? "secondary" : ""}" id="join-code">Tengo un código de grupo</button>
       </div></header>
 
+      ${(S_courses || []).length ? `<section class="panel panel-pad" style="margin-bottom:18px"><h2 style="margin:0 0 10px;font-family:Georgia,serif;font-size:1.15rem">Mis cursos</h2><div class="group-list">${S_courses.map(e => { const n = (e.course?.lessons || []).length, d = (e.progress?.done || []).length; return `<div class="session-rows" style="margin:0"><li style="border:0"><span class="title"><b>${esc(e.course?.title || "")}</b><br><small class="meta">${e.completed_at ? "Terminado · repaso hasta " + fmtDate(e.review_until, { day: "numeric", month: "short" }) : n ? `Lección ${Math.min(d + 1, n)} de ${n}` : ""}${e.ends_at && !e.completed_at ? " · hasta " + fmtDate(e.ends_at, { day: "numeric", month: "short" }) : ""}</small></span><a class="button ${e.completed_at ? "secondary" : ""} small" href="curso.html?e=${e.id}">${e.completed_at ? "Ver" : "Continuar"}</a></li></div>`; }).join("")}</div><p class="meta" style="margin:10px 0 0"><a href="index.html#cursos">Ver más cursos</a></p></section>` : ""}
       ${next ? `<section class="live-brief"><div><span class="tag">Próxima clase</span><strong>${esc(next.title)}</strong><p>${esc(next.group.name)} · ${fmtDate(next.starts_at)}</p></div>
         <div><a class="button gold" href="sesion.html?id=${next.id}">${next.status === "live" ? "Entrar a la clase" : staff ? "Abrir la clase" : "Ir a la clase"}</a></div></section>` : ""}
 
@@ -168,7 +173,7 @@
       <p class="subtle" style="margin:0 0 10px;font-size:14px">Un código fijo del grupo para quien viene cada semana pero aún no se registra. Entra con su nombre y este código; después ya ve directamente la próxima clase. Caduca a los 90 días sin venir.</p>
       <div id="guest-result">${g.allow_guests && g.guest_code ? guestBox(g.guest_code) : ""}</div>
       <div class="live-controls"><button class="button secondary small" id="guest-on">${g.allow_guests && g.guest_code ? "Regenerar" : "Activar código de invitados"}</button>${g.allow_guests ? `<button class="button secondary small" id="guest-off">Desactivar</button>` : ""}</div>`, d => {
-      const guestLink = code => location.href.replace(/[^/]*$/, "index.html?clase=" + code);
+      const guestLink = code => location.href.replace(/[^/]*$/, "entrar.html?clase=" + code);
       d.querySelector("#guest-on").addEventListener("click", async () => {
         const { data: code, error } = await sb.rpc("set_group_guest_code", { p_group: g.id, p_enable: true });
         if (error) { toast("No se pudo activar: " + error.message); return; }
@@ -185,7 +190,7 @@
       d.querySelector("#inv-go").addEventListener("click", async () => {
         const { data: code, error } = await sb.rpc("create_invitation", { p_group: g.id, p_days: Number(d.querySelector("#inv-days").value) });
         if (error) { toast("No se pudo generar: " + error.message); return; }
-        const link = location.href.replace(/[^/]*$/, "index.html");
+        const link = location.href.replace(/[^/]*$/, "entrar.html");
         const msg = `Hola, te invito al grupo "${g.name}" del campus ${Campus.cfg.brand}.\n1) Entra en ${link}\n2) Pulsa "Tengo un código de grupo" y escribe: ${code}\n${g.schedule_text ? "Nos vemos " + g.schedule_text + "." : ""}`;
         d.querySelector("#inv-result").innerHTML = `<div class="code-box"><strong>${esc(code)}</strong><span class="meta">Código del grupo</span></div>
           <div class="live-controls"><button class="button secondary small" id="inv-copy">Copiar código</button><a class="button small" target="_blank" rel="noopener" href="${whatsappMessage(msg)}">Enviar por WhatsApp</a></div>`;
@@ -265,6 +270,8 @@
     });
   }
 
+  let S_courses = [];
+  if (!staff) S_courses = await myCourses();
   await load();
   document.getElementById("loading").hidden = true;
   app.hidden = false;

@@ -1,7 +1,7 @@
 (async () => {
   const { sb, esc, fmtDate, toast, requireUser, renderShell, initials, whatsappMessage, copy } = Campus;
   const me = await requireUser();
-  renderShell(me, "escritorio");
+  renderShell(me, "escritorio"); if (window.Shell && ["coordinator", "teacher"].includes(me.profile.role)) Shell.render(me, "escritorio", "Calendario");
   const role = me.profile.role, coord = role === "coordinator", staff = coord || role === "teacher";
   if (!staff) { location.replace("panel.html"); return; }
   const app = document.getElementById("app"), dialog = document.getElementById("dialog");
@@ -19,6 +19,8 @@
 
   async function load() {
     if (staff) await sb.rpc("ensure_recurring_sessions", { p_days: 14 }).then(() => {}, () => {});
+    if (coord) sb.rpc("cleanup_enrollments").then(() => {}, () => {});
+    S.pendingQ = 0; if (staff) { const r = await sb.from("course_questions").select("id", { count: "exact", head: true }).is("answer", null); S.pendingQ = r.count || 0; }
     const from = S.view === "week" ? S.week : new Date(S.week.getFullYear(), S.week.getMonth(), 1), to = S.view === "week" ? addDays(S.week, 7) : new Date(S.week.getFullYear(), S.week.getMonth() + 1, 1);
     const [g, s, p] = await Promise.all([
       sb.from("groups").select("*, memberships(user_id, role)").order("name"),
@@ -55,6 +57,7 @@
   function alertsHtml() {
     const out = [];
     S.groups.filter(g => !g.teacher_id).forEach(g => out.push(`<span class="alert">⚠ <b>${esc(g.name)}</b> no tiene maestro <button data-assign="${g.id}">Asignar →</button></span>`));
+    if (S.pendingQ) out.push(`<span class="alert info">🙋 <b>${S.pendingQ}</b> pregunta${S.pendingQ === 1 ? "" : "s"} de cursos libres sin responder <a href="equipo.html">Responder →</a></span>`);
     S.sessions.filter(x => x.status === "scheduled" && new Date(x.starts_at) > Date.now() && new Date(x.starts_at) < Date.now() + 3 * 86400e3 && !S.matCount[x.id]).forEach(x => out.push(`<span class="alert warn">📄 ${esc(WDS[new Date(x.starts_at).getDay()])} · <b>${esc(x.title)}</b> sin material <a href="preparar.html?id=${x.id}">Preparar →</a></span>`));
     return out.join("");
   }
