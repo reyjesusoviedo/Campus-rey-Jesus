@@ -163,3 +163,4 @@ body.has-bar .help-btn { display: none; }
 .q-inline .eyebrow { margin: 0 0 4px; }
 .q-inline strong { font-family: Georgia, serif; font-size: 1.2rem; }
 .button.quick-open { background: var(--gold); color: var(--navy); }
+input[type=checkbox], input[type=radio] { width: 18px; height: 18px; flex: none; margin: 0; accent-color: var(--teal-dark); }

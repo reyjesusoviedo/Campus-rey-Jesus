@@ -24,7 +24,9 @@
     return t < now - 3600e3 ? `<span class="tag draft">Sin iniciar</span>` : `<span class="tag">Programada</span>`;
   }
 
+  const WD = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
   async function load() {
+    if (staff) { const r = await sb.rpc("ensure_recurring_sessions", { p_days: 14 }); if (r.data) toast(`${r.data} clase${r.data === 1 ? "" : "s"} creada${r.data === 1 ? "" : "s"} automáticamente`); }
     const { data: groups, error } = await sb.from("groups")
       .select("*, teacher:profiles!groups_teacher_id_fkey(full_name), memberships(user_id, role, profile:profiles(full_name)), sessions(*)")
       .order("name");
@@ -72,6 +74,7 @@
     app.querySelectorAll("[data-invite]").forEach(b => b.addEventListener("click", () => inviteDialog(groups.find(g => g.id === b.dataset.invite))));
     app.querySelectorAll("[data-new-session]").forEach(b => b.addEventListener("click", () => newSessionDialog(groups.find(g => g.id === b.dataset.newSession))));
     app.querySelectorAll("[data-members]").forEach(b => b.addEventListener("click", () => membersDialog(groups.find(g => g.id === b.dataset.members))));
+    app.querySelectorAll("[data-recur]").forEach(b => b.addEventListener("click", () => recurrenceDialog(groups.find(g => g.id === b.dataset.recur))));
     app.querySelectorAll("[data-del-session]").forEach(b => b.addEventListener("click", async () => {
       if (!confirm(`¿Borrar la clase «${b.dataset.title}»? Se borrarán sus actividades, respuestas y material.`)) return;
       const { error } = await sb.from("sessions").delete().eq("id", b.dataset.delSession);
@@ -98,7 +101,7 @@
       <div class="actions">
         ${(role === "coordinator" || g.teacher_id === me.user.id) ? `<button class="icon-button" title="Borrar grupo" data-del-group="${g.id}" data-title="${esc(g.name)}">🗑</button>` : ""}
         ${g.zoom_url ? `<a class="button secondary small" target="_blank" rel="noopener" href="${esc(g.zoom_url)}">Zoom del grupo</a>` : ""}
-        ${canManage ? `<button class="button secondary small" data-members="${g.id}">Alumnos</button><button class="button secondary small" data-invite="${g.id}">Invitar</button><button class="button small" data-new-session="${g.id}">Nueva clase</button>` : ""}
+        ${canManage ? `<button class="button secondary small" data-recur="${g.id}" title="Clases recurrentes">${g.recurrence?.mode && g.recurrence.mode !== "none" ? "🔁 " + WD[g.recurrence.weekday] + " " + g.recurrence.time : "Recurrencia"}</button><button class="button secondary small" data-members="${g.id}">Alumnos</button><button class="button secondary small" data-invite="${g.id}">Invitar</button><button class="button small" data-new-session="${g.id}">Nueva clase</button>` : ""}
       </div></div>
       ${sessions.length ? `<ul class="session-rows">${sessions.slice(0, 8).map(s => `<li>
           <span class="when">${fmtDate(s.starts_at)}</span>
@@ -193,6 +196,37 @@
   function guestBox(code) {
     return `<div class="code-box"><strong>${esc(code)}</strong><span class="meta">Código de invitados</span></div>
       <div class="live-controls"><button class="button secondary small" id="guest-copy">Copiar enlace</button><a class="button small" id="guest-wa" target="_blank" rel="noopener" href="#">Enviar por WhatsApp</a></div>`;
+  }
+
+  async function recurrenceDialog(g) {
+    const { data: tpls, error } = await sb.from("templates").select("id, title, folder").order("folder").order("title");
+    if (error) { toast("Falta el parche de la Fase C en Supabase"); return; }
+    const r = g.recurrence || {}, mode = r.mode || "none", series = r.series || [];
+    const m = (g.schedule_text || "").match(/(\d{1,2})[:.h](\d{2})/); const defTime = r.time || (m ? `${m[1].padStart(2, "0")}:${m[2]}` : "20:00");
+    const defWd = r.weekday ?? (WD.findIndex(w => (g.schedule_text || "").toLowerCase().includes(w.toLowerCase().slice(0, 4))) >= 0 ? WD.findIndex(w => (g.schedule_text || "").toLowerCase().includes(w.toLowerCase().slice(0, 4))) : 2);
+    openDialog("Clases recurrentes · " + g.name, `<div class="inline-form">
+      <p class="subtle" style="margin:0">El campus crea sola la clase de cada semana (con dos semanas de antelación) a partir de la plantilla que elijas. Los alumnos entran con el código del grupo y ven directamente la clase de esa semana.</p>
+      <div class="row"><div class="field"><label for="rc-wd">Día</label><select id="rc-wd">${WD.map((w, i) => `<option value="${i}" ${i === defWd ? "selected" : ""}>${w}</option>`).join("")}</select></div><div class="field"><label for="rc-time">Hora</label><input id="rc-time" type="time" value="${defTime}"></div></div>
+      <div class="field"><label for="rc-mode">Qué clase se crea</label><select id="rc-mode"><option value="none" ${mode === "none" ? "selected" : ""}>Sin recurrencia (las creo a mano)</option><option value="empty" ${mode === "empty" ? "selected" : ""}>Clase vacía cada semana</option><option value="same" ${mode === "same" ? "selected" : ""}>Siempre la misma plantilla</option><option value="series" ${mode === "series" ? "selected" : ""}>Serie de plantillas en orden (cíclica)</option></select></div>
+      <div class="field" id="rc-same-f" hidden><label for="rc-tpl">Plantilla</label><select id="rc-tpl">${(tpls || []).map(t => `<option value="${t.id}" ${r.template_id === t.id ? "selected" : ""}>${esc(t.folder)} · ${esc(t.title)}</option>`).join("")}</select></div>
+      <div class="field" id="rc-series-f" hidden><label>Serie (marca en orden; el número indica la posición)</label><div id="rc-series" style="display:grid;gap:4px;max-height:200px;overflow:auto">${(tpls || []).map(t => `<label style="font-size:14px;display:flex;gap:8px;align-items:center"><input type="checkbox" value="${t.id}" ${series.includes(t.id) ? "checked" : ""}><span class="meta" data-pos style="min-width:18px">${series.includes(t.id) ? series.indexOf(t.id) + 1 : ""}</span>${esc(t.folder)} · ${esc(t.title)}</label>`).join("")}</div><label style="font-size:13px;margin-top:6px">Empezar por la nº <input id="rc-idx" type="number" min="1" value="${(r.next_index || 0) + 1}" style="width:70px"></label></div>
+      <div class="field" id="rc-title-f" hidden><label for="rc-title">Título de las clases</label><input id="rc-title" value="${esc(r.title || g.name)}"></div>
+      ${!(tpls || []).length ? `<p class="notice">Aún no hay plantillas: prepara una clase y pulsa «Guardar como plantilla». Mientras tanto puedes usar «Clase vacía».</p>` : ""}
+      <p class="form-error" id="rc-err"></p>
+      <div class="live-controls"><button class="button" id="rc-save">Guardar</button></div></div>`, d => {
+      const md = d.querySelector("#rc-mode"); const upd = () => { d.querySelector("#rc-same-f").hidden = md.value !== "same"; d.querySelector("#rc-series-f").hidden = md.value !== "series"; d.querySelector("#rc-title-f").hidden = md.value !== "empty"; }; md.addEventListener("change", upd); upd();
+      const order = [...series];
+      d.querySelectorAll("#rc-series input").forEach(cb => cb.addEventListener("change", () => { if (cb.checked) order.push(cb.value); else order.splice(order.indexOf(cb.value), 1); d.querySelectorAll("#rc-series label").forEach(l => { const v = l.querySelector("input").value; l.querySelector("[data-pos]").textContent = order.includes(v) ? order.indexOf(v) + 1 : ""; }); }));
+      d.querySelector("#rc-save").addEventListener("click", async () => {
+        const rec = { mode: md.value, weekday: Number(d.querySelector("#rc-wd").value), time: d.querySelector("#rc-time").value || "20:00" };
+        if (md.value === "same") { rec.template_id = d.querySelector("#rc-tpl").value; if (!rec.template_id) { d.querySelector("#rc-err").textContent = "Elige una plantilla."; return; } }
+        if (md.value === "series") { rec.series = order; rec.next_index = Math.max(0, Number(d.querySelector("#rc-idx").value) - 1); if (!order.length) { d.querySelector("#rc-err").textContent = "Marca al menos una plantilla."; return; } }
+        if (md.value === "empty") rec.title = d.querySelector("#rc-title").value.trim() || g.name;
+        const { error } = await sb.from("groups").update({ recurrence: md.value === "none" ? {} : rec }).eq("id", g.id);
+        if (error) { d.querySelector("#rc-err").textContent = error.message; return; }
+        dialog.close(); toast(md.value === "none" ? "Recurrencia desactivada" : "Recurrencia guardada"); load();
+      });
+    });
   }
 
   function membersDialog(g) {

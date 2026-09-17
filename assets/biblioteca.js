@@ -8,7 +8,7 @@
   function openDialog(title, html, onMount) { document.getElementById("dialog-title").textContent = title; document.getElementById("dialog-body").innerHTML = html; dialog.showModal(); onMount && onMount(dialog); }
   if (!staff) { app.innerHTML = `<div class="lib-empty"><h2>La biblioteca es para maestros y coordinación</h2><p>El material de tus clases lo encuentras dentro de cada clase, en el botón «Material».</p></div>`; document.getElementById("loading").hidden = true; app.hidden = false; return; }
 
-  const S = { items: [], folder: "Todo", q: "", names: {} };
+  const S = { items: [], folder: "Todo", q: "", names: {}, tpls: [] };
   const kindIcon = it => { const k = it.kind === "link" ? "link" : /\.html?$/i.test(it.storage_path || "") ? "html" : /\.pdf$/i.test(it.storage_path || "") ? "pdf" : /\.(png|jpe?g|gif|webp)$/i.test(it.storage_path || "") ? "img" : "txt"; return `<span class="ic ${k}" style="width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-size:10px;font-weight:800;color:#fff;background:${{ link: "#111", html: "#087f74", pdf: "#c2413f", img: "#7a5c14", txt: "#5b6673" }[k]}">${{ link: "WEB", html: "HTML", pdf: "PDF", img: "IMG", txt: "TXT" }[k]}</span>`; };
   const fmtSize = b => !b ? "" : b > 1e6 ? (b / 1e6).toFixed(1) + " MB" : Math.round(b / 1e3) + " KB";
 
@@ -16,6 +16,7 @@
     const { data, error } = await sb.from("library_items").select("*").order("updated_at", { ascending: false });
     if (error) { app.innerHTML = `<p class="notice">No se pudo cargar la biblioteca: ${esc(error.message)}. ¿Se ejecutó el parche de la Fase A?</p>`; return; }
     S.items = data || [];
+    const t = await sb.from("templates").select("*").order("folder").order("title"); S.tpls = t.data || [];
     const ids = [...new Set(S.items.map(i => i.owner_id))].filter(id => !S.names[id]);
     if (ids.length) { const { data: ps } = await sb.from("profiles").select("id, full_name").in("id", ids); (ps || []).forEach(p => S.names[p.id] = p.full_name); }
     render();
@@ -29,6 +30,7 @@
     app.innerHTML = `
       <header class="page-heading"><div><p class="eyebrow">${esc(Campus.cfg.brand)}</p><h1 style="margin:0;font-family:Georgia,serif">Biblioteca</h1><p class="subtle">Sube cada material una vez y añádelo a las clases que quieras.</p></div>
         <div class="comm-aux"><button class="button" id="lib-add">Subir material</button></div></header>
+      ${tplSection()}
       <div class="lib">
         <aside><ul class="lib-folders">
           <li><button data-folder="Todo" aria-pressed="${S.folder === "Todo"}">📚 Todo <span class="n">${S.items.length}</span></button></li>
@@ -46,8 +48,25 @@
     app.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", () => editDialog(S.items.find(i => i.id === b.dataset.edit))));
     app.querySelectorAll("[data-add]").forEach(b => b.addEventListener("click", () => addToClassDialog(S.items.find(i => i.id === b.dataset.add))));
     app.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => delItem(S.items.find(i => i.id === b.dataset.del))));
+    app.querySelectorAll("[data-tpl-del]").forEach(b => b.addEventListener("click", async () => { if (!confirm("¿Borrar esta plantilla? Las clases ya creadas no cambian.")) return; await sb.from("templates").delete().eq("id", b.dataset.tplDel); load(); }));
+    app.querySelectorAll("[data-tpl-new]").forEach(b => b.addEventListener("click", async () => {
+      const t = S.tpls.find(x => x.id === b.dataset.tplNew);
+      const { data: groups } = await sb.from("groups").select("id, name, zoom_url").order("name");
+      const d0 = new Date(); d0.setMinutes(0, 0, 0); d0.setHours(d0.getHours() + 1); const local = new Date(d0.getTime() - d0.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      openDialog("Nueva clase desde «" + t.title + "»", `<div class="inline-form"><div class="field"><label for="tn-g">Grupo</label><select id="tn-g">${(groups || []).map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join("")}</select></div><div class="field"><label for="tn-title">Título</label><input id="tn-title" value="${esc(t.title)}"></div><div class="field"><label for="tn-when">Fecha y hora</label><input id="tn-when" type="datetime-local" value="${local}"></div><button class="button" id="tn-go">Crear y preparar</button></div>`, d => d.querySelector("#tn-go").addEventListener("click", async () => {
+        const gid = d.querySelector("#tn-g").value, g = (groups || []).find(x => x.id === gid);
+        const { data: s, error } = await sb.from("sessions").insert({ group_id: gid, title: d.querySelector("#tn-title").value.trim() || t.title, starts_at: new Date(d.querySelector("#tn-when").value).toISOString(), zoom_url: g?.zoom_url || null, created_by: me.user.id, template_id: t.id }).select().single();
+        if (error) { toast(error.message); return; }
+        const r = await sb.rpc("apply_template", { p_session: s.id, p_template: t.id }); if (r.error) toast("Clase creada, pero la plantilla no se aplicó: " + r.error.message);
+        location.href = "preparar.html?id=" + s.id;
+      }));
+    }));
   }
 
+  function tplSection() {
+    return `<section class="panel panel-pad" style="margin-bottom:18px"><div class="panel-head"><h2 style="margin:0;font-family:Georgia,serif;font-size:1.15rem">Plantillas de clase <span class="meta">${S.tpls.length}</span></h2></div>
+      ${S.tpls.length ? `<ul class="sess-pick" style="max-height:none">${S.tpls.map(t => `<li><b>${esc(t.title)}</b><small>${esc(t.folder)} · ${(t.materials || []).length} materiales · ${(t.activities || []).length} actividades</small><button class="button teal small" data-tpl-new="${t.id}">Nueva clase</button>${t.owner_id === me.user.id || me.profile.role === "coordinator" ? `<button class="icon-button" title="Borrar plantilla" data-tpl-del="${t.id}">🗑</button>` : ""}</li>`).join("")}</ul>` : `<p class="subtle" style="margin:0">Prepara una clase y pulsa «Guardar como plantilla»; aparecerá aquí para reutilizarla o para las clases recurrentes de un grupo.</p>`}</section>`;
+  }
   function itemCard(i) {
     const mine = i.owner_id === me.user.id;
     return `<article class="lib-item ${mine ? "mine" : ""}"><div class="head">${kindIcon(i)}<div class="nm"><b>${esc(i.title)}</b><small>${esc(i.folder)} · ${esc((S.names[i.owner_id] || "").split(" ")[0])}${i.size_bytes ? " · " + fmtSize(i.size_bytes) : ""}${i.shared ? "" : " · privado"}</small></div></div>
