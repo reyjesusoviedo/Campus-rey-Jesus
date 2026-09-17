@@ -14,6 +14,6 @@
 .acts { display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap; }
 .acts button { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 5px 9px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 tr.inactive td { opacity: .55; }
-.link-box { background: #f3f8f8; border: 1px dashed var(--teal-dark); border-radius: 10px; padding: 10px; font-size: 12px; word-break: break-all; margin: 10px 0; }
+.link-box { background: #f2f7fc; border: 1px dashed var(--teal-dark); border-radius: 10px; padding: 10px; font-size: 12px; word-break: break-all; margin: 10px 0; }
 .pill.blue { background: #e6eefc; color: #1d4ed8; }
 @media (max-width: 900px) { .stats { grid-template-columns: 1fr 1fr; } }

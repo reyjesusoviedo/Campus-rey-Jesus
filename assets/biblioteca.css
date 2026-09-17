@@ -15,7 +15,7 @@
 .lib-item .acts { display: flex; flex-wrap: wrap; gap: 6px; }
 .lib-item .tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .lib-item .tags span { font-size: 11px; background: var(--paper); border-radius: 999px; padding: 2px 8px; color: var(--muted); }
-.lib-item.mine { border-color: #cfeee9; }
+.lib-item.mine { border-color: #cfe1f4; }
 .lib-empty { padding: 40px 20px; text-align: center; color: var(--muted); background: #fff; border-radius: 14px; }
 .lib-empty h2 { font-family: Georgia, serif; color: var(--ink); }
 .sess-pick { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 50vh; overflow: auto; }

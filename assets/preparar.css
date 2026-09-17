@@ -18,7 +18,7 @@ body.prep { background: var(--paper); margin: 0; min-height: 100vh; display: fle
 .prep-class .block h3 { font-family: Georgia, serif; font-size: 1rem; margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
 .prep-class .block h3 .lk { margin-left: auto; font-family: Inter, sans-serif; font-size: 12px; color: var(--teal-dark); font-weight: 700; background: none; border: 0; cursor: pointer; padding: 0; }
 .drop { border: 2px dashed var(--line); border-radius: 12px; padding: 10px; min-height: 64px; transition: .15s; }
-.drop.over { border-color: var(--teal-dark); background: #eef9f7; }
+.drop.over { border-color: var(--teal-dark); background: #eaf3fb; }
 .drop .empty { color: var(--muted); font-size: 13px; text-align: center; padding: 10px; }
 .mat-row { display: flex; gap: 8px; align-items: center; padding: 8px 6px; border-bottom: 1px solid #edf0f2; font-size: 13px; }
 .mat-row:last-child { border-bottom: 0; }
@@ -26,7 +26,7 @@ body.prep { background: var(--paper); margin: 0; min-height: 100vh; display: fle
 .mat-row .acts { display: flex; gap: 2px; }
 .mat-row .acts .icon-button { width: 30px; height: 30px; }
 .mat-row.hidden-m .nm { opacity: .55; }
-.mat-row.first { background: #eef9f7; border-radius: 8px; }
+.mat-row.first { background: #eaf3fb; border-radius: 8px; }
 .seq-row { display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 6px; }
 .seq-row .k { font-size: 11px; color: var(--muted); font-weight: 750; }
 .seq-row .r { display: flex; gap: 6px; align-items: center; } .seq-row .r b { flex: 1; }
@@ -36,7 +36,7 @@ body.prep { background: var(--paper); margin: 0; min-height: 100vh; display: fle
 .prev-phone { border: 8px solid #111; border-radius: 26px; overflow: hidden; background: var(--paper); height: 560px; display: grid; grid-template-rows: auto 1fr auto; }
 .prev-top { background: var(--navy); color: #fff; padding: 10px 12px; font-size: 12px; } .prev-top b { display: block; font-size: 13px; }
 .prev-body { overflow: auto; padding: 10px; display: grid; gap: 8px; align-content: start; }
-.prev-video { background: #1c2a38; border-radius: 10px; height: 90px; display: grid; place-items: center; color: #b8c4cf; font-size: 12px; }
+.prev-video { background: #14293f; border-radius: 10px; height: 90px; display: grid; place-items: center; color: #b8c4cf; font-size: 12px; }
 .prev-lesson { background: #fff; border-radius: 10px; padding: 8px; }
 .prev-lesson iframe { width: 100%; height: 260px; border: 0; }
 .prev-bar { background: #fff; border-top: 1px solid var(--line); padding: 8px; font-size: 11px; display: grid; gap: 4px; }
