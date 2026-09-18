@@ -49,6 +49,13 @@
     await loadSettings();
     let me = await currentProfile();
     if (!me) { location.replace("entrar.html"); return new Promise(() => {}); }
+    // Invitado: solo puede estar en su clase
+    if (me.user.is_anonymous) {
+      const { data: gs } = await sb.rpc("my_guest_session");
+      const here = /sesion\.html/.test(location.pathname), id = new URLSearchParams(location.search).get("id");
+      if (gs) { if (!here || id !== gs) { location.replace("sesion.html?id=" + gs); return new Promise(() => {}); } }
+      else { document.body.innerHTML = `<div style="min-height:100vh;display:grid;place-items:center;background:#0b2f6b;color:#fff;font-family:Inter,sans-serif;padding:24px;text-align:center"><div style="background:#fff;color:#101827;border-radius:22px;padding:28px;max-width:420px"><h1 style="font-family:Georgia,serif;font-size:1.4rem;margin:0 0 8px">La clase ha terminado</h1><p style="color:#5b6673">Gracias por venir. Cuando tu maestro abra la siguiente, te pasará un enlace nuevo.</p></div></div>`; return new Promise(() => {}); }
+    }
     let pendingClass = null; try { pendingClass = localStorage.getItem("pendingClass"); } catch {}
     if (pendingClass && !me.user.is_anonymous && !/sesion\.html/.test(location.pathname)) {
       try { localStorage.removeItem("pendingClass"); } catch {}

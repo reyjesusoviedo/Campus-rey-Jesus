@@ -87,21 +87,21 @@
       S.questions.map(q => [q.id, q.status, q.answer]), S.votes.length, S.reactions.map(r => [r.user_id, r.value]), Object.keys(S.presence).length, S.help.map(h => h.id), Object.keys(S.myResponses), S.results[S.focus]?.total, S.results[S.focus]?.allowed, Object.values(S.results).map(r => r?.total)]);
   }
   function captureForm() {
-    const main = $("main"); const f = { text: main.querySelector("#ans-text")?.value, num: main.querySelector("#ans-num")?.value, opts: [...main.querySelectorAll("[name=opt]:checked")].map(i => i.value), q: main.querySelector("#q-text")?.value };
-    const side = $("side"); f.qside = side.querySelector("#q-text")?.value; f.bar = $("bar-text")?.value; f.edTitle = main.querySelector("#ed-title")?.value; f.edPrompt = main.querySelector("#ed-prompt")?.value; f.edOpts = main.querySelector("#ed-opts")?.value; f.edText = main.querySelector("#ed-text")?.value; f.edOpen = main.querySelector("details.editor")?.open;
+    const main = $("main"); if (!main) return {}; const f = { text: main.querySelector("#ans-text")?.value, num: main.querySelector("#ans-num")?.value, opts: [...main.querySelectorAll("[name=opt]:checked")].map(i => i.value), q: main.querySelector("#q-text")?.value };
+    const side = $("side"); f.qside = side?.querySelector("#q-text")?.value; f.bar = $("bar-text")?.value; f.edTitle = main.querySelector("#ed-title")?.value; f.edPrompt = main.querySelector("#ed-prompt")?.value; f.edOpts = main.querySelector("#ed-opts")?.value; f.edText = main.querySelector("#ed-text")?.value; f.edOpen = main.querySelector("details.editor")?.open;
     return f;
   }
   function restoreForm(f) {
     const main = $("main"), side = $("side");
     const set = (el, v) => { if (el && v !== undefined && v !== null && v !== "" && !el.value) el.value = v; };
-    set(main.querySelector("#ans-text"), f.text); set(main.querySelector("#ans-num"), f.num); set(side.querySelector("#q-text"), f.qside); if ($("bar-text") && f.bar) $("bar-text").value = f.bar;
+    if (!main) return; set(main.querySelector("#ans-text"), f.text); set(main.querySelector("#ans-num"), f.num); set(side?.querySelector("#q-text"), f.qside); if ($("bar-text") && f.bar) $("bar-text").value = f.bar;
     if (f.opts?.length && !main.querySelector("[name=opt]:checked")) f.opts.forEach(v => { const i = main.querySelector(`[name=opt][value="${v}"]`); if (i) i.checked = true; });
     set(main.querySelector("#ed-title"), f.edTitle); set(main.querySelector("#ed-prompt"), f.edPrompt); set(main.querySelector("#ed-opts"), f.edOpts); set(main.querySelector("#ed-text"), f.edText);
     if (f.edOpen && main.querySelector("details.editor")) main.querySelector("details.editor").open = true;
   }
   let lastSig = "", refreshing = false;
   async function refreshAll(force) {
-    if (refreshing) return; refreshing = true;
+    if (S.ended || refreshing) return; refreshing = true;
     try {
       if (!(await loadSession())) return;
       await Promise.all([loadActivities(), loadMaterials(), loadQuestions(), loadHelp(), loadReactions()]);
@@ -115,8 +115,16 @@
   // ---------- render ----------
   function render() {
     document.body.classList.toggle("teacher", S.teacher); document.body.classList.toggle("student", !S.teacher);
+    if (me.user.is_anonymous && S.session.status === "closed" && !inGrace()) return renderGuestEnd();
     renderTop(); renderMain(); renderSide(); renderBottom(); renderTools(); updateBar(); semaWidget();
-    $("help-btn").hidden = true;
+    const hb = $("help-btn"); if (hb) hb.hidden = true;
+  }
+  function renderGuestEnd() {
+    const s = S.session;
+    if (S.jitsi) { try { S.jitsi.executeCommand("hangup"); S.jitsi.dispose(); } catch {} S.jitsi = null; S.jitsiEl = null; }
+    S.stageFrame = null; document.body.classList.add("guest-end");
+    S.ended = true; try { if (S.channel) { sb.removeChannel(S.channel); S.channel = null; } } catch {}
+    document.body.innerHTML = `<div class="guest-end-screen"><div class="card">${Campus.brandMark ? Campus.brandMark() : ""}<h1>La clase ha terminado</h1><p>Gracias por venir, ${esc(me.profile.full_name.split(" ")[0])}.</p><p class="meta">Cuando tu maestro abra la siguiente clase te pasará un enlace nuevo.</p>${s.guests_see_recording && s.recording_url ? `<a class="button" target="_blank" rel="noopener" href="${esc(s.recording_url)}">Ver la grabación</a>` : ""}</div></div>`;
   }
   function liveBadge() {
     const s = S.session;
@@ -157,11 +165,12 @@
     if (act === "end") {
       openDialog("Finalizar la clase", `<div class="inline-form">
         <div class="row"><div class="field"><label for="e-grace">Margen para terminar de escribir</label><select id="e-grace"><option value="0">Sin margen</option><option value="2" selected>2 minutos</option><option value="5">5 minutos</option></select></div>
-        <div class="field"><label><input type="checkbox" id="e-def" checked> Dejar las actividades abiertas en diferido</label></div></div>
+        <div class="field"><label><input type="checkbox" id="e-def" checked> Dejar las actividades abiertas en diferido</label><label style="display:block;margin-top:6px"><input type="checkbox" id="e-gr"> Dejar la grabación visible para los invitados</label></div></div>
         <div class="field"><label for="e-rec">Enlace de la grabación (puedes añadirlo después)</label><input id="e-rec" placeholder="https://…"></div>
         <div class="field"><label for="e-sum">Resumen para el grupo (opcional)</label><textarea id="e-sum" rows="3"></textarea></div>
         <button class="button danger" id="e-go">Finalizar</button></div>`, d => {
         d.querySelector("#e-go").addEventListener("click", async () => {
+          await sb.from("sessions").update({ guests_see_recording: d.querySelector("#e-gr").checked }).eq("id", sessionId);
           const { error } = await sb.rpc("end_session", { p_session: sessionId, p_grace: Number(d.querySelector("#e-grace").value), p_allow_deferred: d.querySelector("#e-def").checked, p_recording: d.querySelector("#e-rec").value.trim() || null, p_summary: d.querySelector("#e-sum").value.trim() || null });
           if (error) { toast("No se pudo finalizar: " + error.message); return; }
           log("session_ended"); dialog.close(); toast("Clase finalizada"); await refreshAll(true); summaryDialog();
@@ -310,12 +319,12 @@
     let code = S.session.guest_code;
     if (!code || !S.session.allow_guests) { const { data, error } = await sb.rpc("set_session_guest_code", { p_session: sessionId, p_enable: true }); if (error) { toast("No se pudo generar: " + error.message); return; } code = data; await loadSession(); }
     const base = location.href.replace(/[^/]*$/, ""), link = base + "entrar.html?clase=" + code, viewLink = base + "ver.html?c=" + code;
-    const msg = `Te invito a la clase "${S.session.title}" (${S.group.name}) del campus ${Campus.cfg.brand}.\nEntra aquí y escribe tu nombre: ${link}\n(Si te lo pide, el código es ${code}.)`;
+    const msg = `Clase: ${S.session.title} (${S.group.name})\nEntra aquí y escribe tu nombre:\n${link}`;
     openDialog("Invitar a esta clase", `
       <p class="subtle" style="margin-top:0">Quien tenga este código entra solo a esta clase, sin correo ni contraseña, y caduca al terminar. Para asistentes habituales usa el código de invitados del grupo (Mis grupos → Invitar).</p>
       <div class="code-box"><strong>${esc(code)}</strong><span class="meta">Código de la clase</span></div>
-      <div id="qr" style="display:grid;place-items:center;margin:14px 0"></div>
-      <div class="live-controls"><button class="button secondary small" id="inv-copy">Copiar enlace</button><a class="button small" target="_blank" rel="noopener" href="${Campus.whatsappMessage(msg)}">Enviar por WhatsApp</a></div>
+      <div class="link-box" style="margin:12px 0;word-break:break-all;background:#f3f8f8;border:1px dashed var(--teal-dark);border-radius:10px;padding:10px;font-size:13px">${esc(link)}</div>
+      <div class="live-controls"><a class="button gold small" target="_blank" rel="noopener" href="${Campus.whatsappMessage(msg)}">Enviar por WhatsApp</a><button class="button secondary small" id="inv-copy">Copiar enlace</button><a class="button secondary small" target="_blank" rel="noopener" href="${link}">Probar el enlace</a></div>
       <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
       <label style="display:flex;gap:10px;align-items:center;font-size:15px"><input type="checkbox" id="pv" ${S.session.public_view ? "checked" : ""}> <span><strong>Modo «solo ver»</strong><br><span class="meta">Un enlace público que muestra lo proyectado y sigue al maestro, sin poder responder. Para proyectar en una sala o compartir con quien solo mira.</span></span></label>
       <div id="pv-link" ${S.session.public_view ? "" : "hidden"} style="margin-top:10px"><input readonly value="${esc(viewLink)}" style="width:100%"><div class="live-controls"><button class="button secondary small" id="pv-copy">Copiar enlace público</button></div></div>
@@ -334,8 +343,7 @@
       d.querySelector("#pv-copy")?.addEventListener("click", () => copy(viewLink));
       d.querySelector("#pv").addEventListener("change", async e => { await sb.from("sessions").update({ public_view: e.target.checked }).eq("id", sessionId); d.querySelector("#pv-link").hidden = !e.target.checked; });
       d.querySelector("#inv-off").addEventListener("click", async () => { await sb.rpc("set_session_guest_code", { p_session: sessionId, p_enable: false }); dialog.close(); toast("Invitados desactivados"); });
-      const draw = () => { try { d.querySelector("#qr").innerHTML = ""; new QRCode(d.querySelector("#qr"), { text: link, width: 180, height: 180 }); } catch {} };
-      if (window.QRCode) draw(); else { const sc = document.createElement("script"); sc.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"; sc.onload = draw; document.head.appendChild(sc); }
+
     });
   }
 
@@ -995,7 +1003,7 @@
     let semaEl = $("bar-sema"); if (!semaEl) { semaEl = document.createElement("div"); semaEl.id = "bar-sema"; semaEl.className = "sema"; bar.insertBefore(semaEl, $("bar-status")); }
     semaEl.innerHTML = [["ok", "🟢", "Voy bien"], ["meh", "🟡", "Más o menos"], ["lost", "🔴", "No lo entiendo"]].map(([v, ic, l]) => `<button data-rx="${v}" aria-pressed="${mineRx === v}"><span>${ic}</span>${l}</button>`).join("");
     semaEl.querySelectorAll("[data-rx]").forEach(b => b.addEventListener("click", () => setReaction(b.dataset.rx)));
-    $("bar-help").hidden = true;
+    const bh = $("bar-help"); if (bh) bh.hidden = true;
     $("bar-send").textContent = mine && t ? "Actualizar" : "Enviar";
   }
   async function barSend() {
@@ -1018,10 +1026,10 @@
   $("bar-send")?.addEventListener("click", barSend);
   $("bar-text")?.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && window.innerWidth > 900) { e.preventDefault(); barSend(); } });
   $("bar-text")?.addEventListener("input", e => { e.target.style.height = "auto"; e.target.style.height = Math.min(120, e.target.scrollHeight) + "px"; });
-  $("bar-help")?.addEventListener("click", () => $("help-btn").click());
+  $("bar-help")?.addEventListener("click", () => $("help-btn")?.click());
 
   // ---- ayuda ----
-  $("help-btn").addEventListener("click", async () => {
+  $("help-btn")?.addEventListener("click", async () => {
     const mine = S.help.find(h => h.user_id === me.user.id);
     if (mine) { await sb.from("help_requests").update({ status: "resolved" }).eq("id", mine.id); toast("Aviso retirado"); }
     else { const msg = prompt("¿Qué necesitas? (opcional)"); const { error } = await sb.from("help_requests").insert({ session_id: sessionId, user_id: me.user.id, message: msg || null }); if (error) { toast("No se pudo avisar: " + error.message); return; } log("help"); toast("Tu maestro ha recibido el aviso"); }
@@ -1060,5 +1068,5 @@
   await namesFor([S.group.teacher_id]);
   if (S.teacher) await loadAgenda();
   await refreshAll(true); subscribe();
-  $("loading")?.remove(); $("contenido").hidden = false;
+  $("loading")?.remove(); const cont = $("contenido"); if (cont) cont.hidden = false;
 })();

@@ -1,5 +1,6 @@
 (async () => {
   { const q = new URLSearchParams(location.search); const c = q.get("clase") || q.get("c"); if (c) { location.replace("clase.html?c=" + encodeURIComponent(c)); return; } }
+  try { const { data: { session } } = await window.Campus.sb.auth.getSession(); if (session && session.user.is_anonymous) { const { data: gs } = await window.Campus.sb.rpc("my_guest_session"); if (gs) { location.replace("sesion.html?id=" + gs); return; } } } catch {}
   const app0 = document.getElementById("app");
   const fail = msg => { app0.innerHTML = `<div style="max-width:640px;margin:40px auto;padding:20px;background:#fff7e0;border:1px solid #f1dfa2;border-radius:12px"><b>La portada no pudo cargar.</b><br><small>${msg}</small><br><br><a class="button" href="entrar.html">Ir al acceso</a></div>`; };
   if (!window.Campus || !Campus.loadSettings) { fail("El navegador está usando una versión antigua del campus. Recarga con Ctrl+F5 o abre en una pestaña de incógnito."); return; }
