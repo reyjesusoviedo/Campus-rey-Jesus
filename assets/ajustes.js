@@ -53,15 +53,53 @@
       </div>
       <div class="esc-card" style="margin-top:12px"><h3>Cursos <span class="lk" id="c-new">+ Nuevo curso</span></h3>
         ${S.courses.length ? `<table class="stable"><tr><th>Curso</th><th>Tipo</th><th>Lecciones</th><th>Duración</th><th>Visible</th><th></th></tr>${S.courses.map(c => `<tr><td><b>${esc(c.title)}</b><br><small class="meta">index.html · ${esc(c.slug)}</small></td><td>${c.type === "live" ? "En directo · " + esc(S.groups.find(g => g.id === c.group_id)?.name || "sin grupo") : "A tu ritmo"}</td><td>${(c.lessons || []).length}</td><td>${c.duration_days} días</td><td>${c.open ? `<span class="tag">Sí</span>` : `<span class="tag closed">No</span>`}</td><td><div class="acts"><button data-edit="${c.id}">Editar</button><button data-copy="${c.slug}">Copiar enlace</button><button data-del="${c.id}">Borrar</button></div></td></tr>`).join("")}</table>` : `<p class="subtle">Aún no hay cursos. Crea el primero: elige el tipo, las lecciones de la biblioteca y la duración.</p>`}
-        <p class="meta" style="margin-top:10px"><button class="button secondary small" id="cleanup">Borrar inscripciones caducadas ahora</button></p></div>`;
+        <p class="meta" style="margin-top:10px"><button class="button secondary small" id="cleanup">Borrar inscripciones caducadas ahora</button></p></div>
+      <div class="esc-card" style="margin-top:12px;border:1px solid #f1c8ce"><h3>🧹 Datos de prueba <span class="lk" id="dp-refresh">Actualizar</span></h3>
+        <p class="meta" id="dp-counts">Cargando recuento…</p>
+        <p class="subtle" style="font-size:14px">Marca lo que quieras borrar del campus. No se tocan los ajustes, el logo ni tu cuenta de coordinación.</p>
+        <div id="dp-boxes" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px;margin:10px 0"></div>
+        <div class="live-controls"><button class="button danger" id="dp-purge">Borrar lo marcado</button><button class="button secondary small" id="dp-guests">Limpiar invitados antiguos</button></div></div>`;
     app.querySelector("#s-save").addEventListener("click", saveSettings);
     app.querySelector("#c-new").addEventListener("click", () => courseDialog(null));
     app.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", () => courseDialog(S.courses.find(c => c.id === b.dataset.edit))));
     app.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", () => Campus.copy(location.href.replace(/[^/]*$/, "entrar.html?curso=" + b.dataset.copy))));
     app.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", async () => { const c = S.courses.find(x => x.id === b.dataset.del); if (prompt(`Vas a borrar el curso «${c.title}» y todas sus inscripciones. Escribe BORRAR para confirmar:`) !== "BORRAR") return; await sb.from("courses").delete().eq("id", c.id); toast("Curso borrado"); load(); }));
+    loadCounts();
+    app.querySelector("#dp-refresh").addEventListener("click", loadCounts);
+    app.querySelector("#dp-guests").addEventListener("click", async () => { const { data, error } = await sb.rpc("purge_guests", { p_all: false }); if (error) { toast(error.message); return; } toast(`${data} invitados antiguos borrados`); loadCounts(); });
+    app.querySelector("#dp-purge").addEventListener("click", purgeDialog);
     app.querySelector("#cleanup").addEventListener("click", async () => { const { data, error } = await sb.rpc("cleanup_enrollments"); if (error) toast(error.message); else toast(`${data} inscripciones borradas`); });
   }
 
+  const PURGE = [["sessions", "Clases (y sus respuestas)"], ["groups", "Grupos (y sus clases)"], ["students", "Alumnos registrados"], ["guests", "Invitados anónimos"], ["teachers", "Maestros (no coordinación)"], ["materials", "Material de la biblioteca"], ["courses", "Cursos e inscripciones"], ["templates", "Plantillas de clase"]];
+  async function loadCounts() {
+    const { data, error } = await sb.rpc("campus_counts");
+    const el = app.querySelector("#dp-counts"); if (!el) return;
+    if (error || !data) { el.textContent = "No se pudo leer el recuento: " + esc(error?.message || ""); return; }
+    S.counts = data;
+    el.innerHTML = `Ahora mismo hay <b>${data.groups}</b> grupos, <b>${data.sessions}</b> clases, <b>${data.students}</b> alumnos, <b>${data.guests}</b> invitados, <b>${data.staff}</b> del equipo, <b>${data.materials}</b> materiales, <b>${data.courses}</b> cursos y <b>${data.templates}</b> plantillas.`;
+    app.querySelector("#dp-boxes").innerHTML = PURGE.map(([k, l]) => `<label style="font-size:14px;display:flex;gap:8px;align-items:center"><input type="checkbox" value="${k}"> ${l}${data[k] != null ? ` <span class="meta">(${data[k]})</span>` : ""}</label>`).join("");
+  }
+  function purgeDialog() {
+    const picked = [...app.querySelectorAll("#dp-boxes input:checked")].map(i => i.value);
+    if (!picked.length) { toast("Marca primero qué quieres borrar"); return; }
+    const labels = PURGE.filter(([k]) => picked.includes(k)).map(([, l]) => l);
+    openDialog("Borrar datos de prueba", `<p class="subtle" style="margin-top:0">Se va a borrar <b>para siempre</b>:</p><ul>${labels.map(l => `<li>${esc(l)}</li>`).join("")}</ul>
+      <p class="notice">Tu cuenta de coordinación, los ajustes y el logo no se tocan.</p>
+      <div class="field"><label for="pg-x">Escribe BORRAR para confirmar</label><input id="pg-x" autocomplete="off"></div>
+      <p class="form-error" id="pg-err"></p>
+      <div class="live-controls"><button class="button secondary" id="pg-cancel">Cancelar</button><button class="button danger" id="pg-go">Borrar</button></div>`, d => {
+      d.querySelector("#pg-cancel").addEventListener("click", () => dialog.close());
+      d.querySelector("#pg-go").addEventListener("click", async () => {
+        if (d.querySelector("#pg-x").value.trim().toUpperCase() !== "BORRAR") { d.querySelector("#pg-err").textContent = "Escribe BORRAR para confirmar."; return; }
+        d.querySelector("#pg-go").disabled = true;
+        const { data, error } = await sb.rpc("purge_data", { p_what: picked });
+        d.querySelector("#pg-go").disabled = false;
+        if (error) { d.querySelector("#pg-err").textContent = error.message; return; }
+        dialog.close(); toast("Borrado: " + Object.entries(data || {}).map(([k, v]) => `${v} ${k}`).join(", ")); load();
+      });
+    });
+  }
   async function saveSettings() {
     const g = id => app.querySelector("#" + id).value.trim();
     const lines = id => g(id).split("\n").map(x => x.trim()).filter(Boolean);

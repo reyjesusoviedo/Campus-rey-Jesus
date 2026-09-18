@@ -51,7 +51,7 @@
         <td><span class="tag" style="${p.role === "coordinator" ? "background:#faf0d6;color:#7a5c14" : ""}">${ROLE[p.role]}</span></td>
         <td class="groups">${p.role === "coordinator" && !gs.length ? `<span class="tag closed">Todos</span>` : gs.map(g => `<span style="--gc:${gcolor(g)}">${esc(g.name)}</span>`).join("") || `<span class="tag closed">Sin grupo</span>`}</td>
         <td>${S.last[p.id] ? fmtDate(S.last[p.id], { day: "numeric", month: "short" }) : "—"}</td><td>${state}</td>
-        <td><div class="acts">${p.active ? `<button data-groups="${p.id}">👥 Grupos</button>${p.id !== me.user.id ? `<button data-role="${p.id}">✏️ Rol</button><button data-pw="${p.id}">🔑 Contraseña</button><button class="danger" data-off="${p.id}">🗑 Desactivar</button>` : ""}` : `<button data-on="${p.id}">Reactivar</button>`}</div></td></tr>`;
+        <td><div class="acts">${p.active ? `<button data-groups="${p.id}">👥 Grupos</button>${p.id !== me.user.id ? `<button data-role="${p.id}">✏️ Rol</button><button data-pw="${p.id}">🔑 Contraseña</button><button data-off="${p.id}">⏸ Desactivar</button><button class="danger" data-del-person="${p.id}">🗑 Eliminar</button>` : ""}` : `<button data-on="${p.id}">Reactivar</button>`}</div></td></tr>`;
     });
     body.innerHTML = `${off ? `<div style="padding:10px 14px 0"><label style="font-size:14px;display:inline-flex;gap:8px;align-items:center"><input type="checkbox" id="show-off" ${S.showOff ? "checked" : ""}> Mostrar desactivados (${off})</label></div>` : ""}
       <table><tr><th>Persona</th><th>Rol</th><th>Grupos</th><th>Última clase</th><th>Estado</th><th></th></tr>${rows.join("") || `<tr><td colspan="6" class="meta">Sin personas en esta lista.</td></tr>`}</table>`;
@@ -61,6 +61,7 @@
     body.querySelectorAll("[data-pw]").forEach(b => b.addEventListener("click", () => passwordDialog(S.staff.find(p => p.id === b.dataset.pw))));
     body.querySelectorAll("[data-off]").forEach(b => b.addEventListener("click", async () => { const p = S.staff.find(x => x.id === b.dataset.off); if (!confirm(`¿Desactivar a ${p.full_name}? No se borra: deja de poder entrar y su historial se conserva. Lo verás marcando «Mostrar desactivados».`)) return; const { error } = await sb.from("profiles").update({ active: false }).eq("id", p.id); if (error) toast(error.message); else { toast("Desactivado · márcalo en «Mostrar desactivados» para reactivarlo"); S.showOff = true; } load(); }));
     body.querySelectorAll("[data-on]").forEach(b => b.addEventListener("click", async () => { await sb.from("profiles").update({ active: true }).eq("id", b.dataset.on); toast("Reactivado"); load(); }));
+    body.querySelectorAll("[data-del-person]").forEach(b => b.addEventListener("click", () => deletePersonDialog(S.staff.find(p => p.id === b.dataset.delPerson))));
   }
 
   function renderInvites() {
@@ -111,6 +112,24 @@
         if (newId) { const r = await sb.from("profiles").update({ role, active: true, full_name: name }).eq("id", newId); if (r.error) toast("Aviso: no se pudo fijar el rol: " + r.error.message); }
         dialog.close(); S.students = null; if (role === "student") S.tab = "students"; await load();
         openDialog("Acceso creado", `<p class="subtle" style="margin-top:0">Pásale estos datos. Podrá cambiar la contraseña en «Mi perfil».</p><div class="link-box">${esc(accessText(name, email, pw)).replace(/\n/g, "<br>")}</div><div class="live-controls"><button class="button secondary small" id="a-copy">Copiar datos</button><a class="button small" target="_blank" rel="noopener" href="${whatsappMessage(accessText(name, email, pw))}">Enviar por WhatsApp</a></div>`, dd => dd.querySelector("#a-copy").addEventListener("click", () => copy(accessText(name, email, pw))));
+      });
+    });
+  }
+  function deletePersonDialog(p, isStudent) {
+    if (!p) return;
+    openDialog("Eliminar a " + (p.full_name || p.name || ""), `<p class="subtle" style="margin-top:0">Se borra del campus <b>para siempre</b>: su cuenta, sus respuestas, su asistencia y su pertenencia a los grupos. ${isStudent ? "" : "Si llevaba algún grupo, el grupo quedará sin maestro."}</p>
+      <p class="notice">¿Va a volver más adelante? Mejor <b>Desactivar</b>: deja de entrar pero se conserva todo.</p>
+      <div class="field"><label for="dp-x">Escribe BORRAR para confirmar</label><input id="dp-x" autocomplete="off"></div>
+      <p class="form-error" id="dp-err"></p>
+      <div class="live-controls"><button class="button secondary" id="dp-cancel">Cancelar</button><button class="button danger" id="dp-go">Eliminar del campus</button></div>`, d => {
+      d.querySelector("#dp-cancel").addEventListener("click", () => dialog.close());
+      d.querySelector("#dp-go").addEventListener("click", async () => {
+        if (d.querySelector("#dp-x").value.trim().toUpperCase() !== "BORRAR") { d.querySelector("#dp-err").textContent = "Escribe BORRAR para confirmar."; return; }
+        d.querySelector("#dp-go").disabled = true;
+        const { error } = await sb.rpc("delete_person", { p_user: p.id });
+        d.querySelector("#dp-go").disabled = false;
+        if (error) { d.querySelector("#dp-err").textContent = error.message; return; }
+        dialog.close(); toast("Eliminado del campus"); S.students = null; load();
       });
     });
   }
@@ -172,8 +191,9 @@
     }
     const q = S.q.toLowerCase(); const list = S.students.filter(s => !q || (s.name || "").toLowerCase().includes(q) || (s.email || "").toLowerCase().includes(q) || s.groups.some(g => g.name.toLowerCase().includes(q)));
     body.innerHTML = `<div style="padding:10px 14px 0"><input type="search" id="st-q" placeholder="Buscar por nombre, correo o grupo…" value="${esc(S.q)}" style="width:100%"></div>
-      <table><tr><th>Nombre</th><th>Grupos</th><th>Tipo</th><th>Última asistencia</th><th></th></tr>${list.slice(0, 300).map(s => `<tr><td><div class="who"><span class="avatar teal">${esc(initials(s.name))}</span><span><b>${esc(s.name || "—")}</b><small>${esc(s.email || "")}</small></span></div></td><td class="groups">${s.groups.map(g => `<span style="--gc:${gcolor(g)}">${esc(g.name)}</span>`).join("")}</td><td>${s.guest ? `<span class="tag" style="background:#faf0d6;color:#7a5c14">Invitado</span>` : `<span class="tag">Cuenta</span>`}</td><td>${s.last ? fmtDate(s.last, { day: "numeric", month: "short" }) : "—"}</td><td><div class="acts">${!s.guest ? `<button data-promote="${s.id}">Hacer maestro</button>` : ""}</div></td></tr>`).join("") || `<tr><td colspan="5" class="meta">Nadie con ese nombre.</td></tr>`}</table>`;
+      <table><tr><th>Nombre</th><th>Grupos</th><th>Tipo</th><th>Última asistencia</th><th></th></tr>${list.slice(0, 300).map(s => `<tr><td><div class="who"><span class="avatar teal">${esc(initials(s.name))}</span><span><b>${esc(s.name || "—")}</b><small>${esc(s.email || "")}</small></span></div></td><td class="groups">${s.groups.map(g => `<span style="--gc:${gcolor(g)}">${esc(g.name)}</span>`).join("")}</td><td>${s.guest ? `<span class="tag" style="background:#faf0d6;color:#7a5c14">Invitado</span>` : `<span class="tag">Cuenta</span>`}</td><td>${s.last ? fmtDate(s.last, { day: "numeric", month: "short" }) : "—"}</td><td><div class="acts">${!s.guest ? `<button data-promote="${s.id}">Hacer maestro</button>` : ""}<button class="danger" data-del-student="${s.id}">🗑 Eliminar</button></div></td></tr>`).join("") || `<tr><td colspan="5" class="meta">Nadie con ese nombre.</td></tr>`}</table>`;
     const inp = body.querySelector("#st-q"); inp.addEventListener("input", e => { S.q = e.target.value; renderStudents(); const el = body.querySelector("#st-q"); el.focus(); el.setSelectionRange(S.q.length, S.q.length); });
+    body.querySelectorAll("[data-del-student]").forEach(b => b.addEventListener("click", () => { const s2 = S.students.find(x => x.id === b.dataset.delStudent); deletePersonDialog({ id: s2.id, full_name: s2.name }, true); }));
     body.querySelectorAll("[data-promote]").forEach(b => b.addEventListener("click", async () => { const s = S.students.find(x => x.id === b.dataset.promote); if (!confirm(`¿Hacer maestro/a a ${s.name}? Podrá crear y dar clases.`)) return; const { error } = await sb.from("profiles").update({ role: "teacher", active: true }).eq("id", s.id); if (error) { toast(error.message); return; } toast(s.name + " ya es maestro/a"); S.students = null; S.tab = "staff"; load(); }));
   }
 
