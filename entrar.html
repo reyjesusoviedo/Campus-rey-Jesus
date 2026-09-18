@@ -47,6 +47,7 @@
 
   let mode = "password";
   const err = document.getElementById("error");
+  { const c = new URLSearchParams(location.search).get("clase"); const { data: { session: cs } } = await sb.auth.getSession(); if (c && !cs) { location.replace("clase.html?c=" + encodeURIComponent(c)); return; } }
   const courseSlug = new URLSearchParams(location.search).get("curso");
   if (courseSlug) {
     try { localStorage.setItem("pendingCourse", courseSlug); } catch {}

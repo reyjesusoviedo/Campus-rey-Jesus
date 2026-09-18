@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Entrar a la clase</title>
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="stylesheet" href="assets/piloto.css">
+<style>
+  body.join { min-height: 100vh; display: grid; place-items: center; padding: 20px; background: linear-gradient(160deg, #0b2f6b, #0a4f85 60%, #1263b8); margin: 0; }
+  .join-card { width: min(460px, 100%); background: #fff; border-radius: 22px; padding: 28px; box-shadow: 0 24px 60px rgba(0,0,0,.3); text-align: center; }
+  .join-card .brand { justify-content: center; color: var(--ink); padding: 0 0 14px; }
+  .join-card h1 { font-family: Georgia, serif; font-size: 1.5rem; margin: 0 0 4px; }
+  .join-card .sub { color: var(--muted); margin: 0 0 18px; }
+  .join-card .live { display: inline-flex; align-items: center; gap: 6px; background: #fbe6e8; color: #a1343e; font-weight: 800; padding: 5px 12px; border-radius: 999px; font-size: 12px; margin-bottom: 10px; }
+  .join-card .live i { width: 8px; height: 8px; border-radius: 50%; background: #d4515c; }
+  .join-card input { width: 100%; font-size: 18px; padding: 14px; border: 2px solid var(--line); border-radius: 14px; text-align: center; }
+  .join-card .button { width: 100%; min-height: 56px; font-size: 18px; margin-top: 12px; }
+  .join-card .err { color: var(--danger); font-weight: 700; min-height: 1.2em; margin: 10px 0 0; }
+  .join-card .meta a { color: var(--teal-dark); }
+</style>
+</head>
+<body class="join">
+<main class="join-card" id="card"><p class="meta">Abriendo la clase…</p></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/db.js"></script>
+<script>
+(async () => {
+  const { sb, esc, cfg, fmtDate, loadSettings, brandMark, qs } = Campus;
+  const card = document.getElementById("card");
+  const code = (qs("c") || qs("clase") || "").toUpperCase().trim();
+  await loadSettings();
+  const head = `<a class="brand" href="index.html">${brandMark()}<span>${esc(cfg.brand)}<small>${esc(cfg.tagline)}</small></span></a>`;
+  if (!code) { card.innerHTML = head + `<h1>Falta el código</h1><p class="sub">Pide a tu maestro el enlace o el código de la clase.</p><a class="button" href="entrar.html">Ir al campus</a>`; return; }
+
+  const { data: info } = await sb.rpc("class_info", { p_code: code });
+  const title = info?.title || "Clase", group = info?.group || "", teacher = info?.teacher || "";
+  const closed = info && info.status === "closed";
+  if (!info) { card.innerHTML = head + `<h1>Código no válido</h1><p class="sub">Puede que la clase haya terminado o que el código sea otro. Pídeselo a tu maestro.</p><a class="button secondary" href="entrar.html">Ir al campus</a>`; return; }
+
+  const enter = async name => {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) { const { error } = await sb.auth.signInAnonymously({ options: { data: { full_name: name } } }); if (error) return { error: error.message.includes("Anonymous") ? "El acceso de invitados no está activado en el campus. Avisa a coordinación." : error.message }; }
+    const { data: { session: s2 } } = await sb.auth.getSession();
+    if (s2 && s2.user.is_anonymous) { const r = await sb.rpc("join_as_guest", { p_code: code, p_name: name }); return r.error ? { error: r.error.message } : { id: r.data }; }
+    const r = await sb.rpc("join_with_code_target", { p_code: code }); return r.error ? { error: r.error.message } : { id: r.data };
+  };
+
+  // Si ya hay sesión en este móvil, entrar directamente
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    card.innerHTML = head + `<p class="sub">Entrando a la clase…</p>`;
+    const r = await enter(null);
+    if (r.id) { location.replace("sesion.html?id=" + r.id); return; }
+  }
+
+  let saved = ""; try { saved = localStorage.getItem("guestName") || ""; } catch {}
+  card.innerHTML = head +
+    `${info.status === "live" ? `<span class="live"><i></i> EN DIRECTO</span>` : ""}
+     <h1>${esc(title)}</h1><p class="sub">${esc(group)}${teacher ? " · " + esc(teacher) : ""}${info.starts_at ? " · " + fmtDate(info.starts_at) : ""}</p>
+     ${closed ? `<p class="sub">Esta clase ya ha terminado.</p><a class="button secondary" href="entrar.html">Ir al campus</a>` :
+     `<label for="nm" style="display:block;font-weight:700;margin-bottom:6px">¿Cómo te llamas?</label>
+      <input id="nm" value="${esc(saved)}" placeholder="Tu nombre" autocomplete="name" autocapitalize="words">
+      <button class="button" id="go">Entrar a la clase</button>
+      <p class="err" id="err"></p>
+      <p class="meta" style="margin-top:12px">¿Ya tienes cuenta en el campus? <a href="entrar.html?clase=${encodeURIComponent(code)}">Entra con tu correo</a></p>`}`;
+  if (closed) return;
+  const err = document.getElementById("err"), btn = document.getElementById("go"), nm = document.getElementById("nm");
+  const go = async () => {
+    const name = nm.value.trim();
+    if (name.length < 2) { err.textContent = "Escribe tu nombre para que tu maestro sepa quién eres."; nm.focus(); return; }
+    try { localStorage.setItem("guestName", name); } catch {}
+    btn.disabled = true; btn.textContent = "Entrando…"; err.textContent = "";
+    const r = await enter(name);
+    if (r.error) { err.textContent = r.error.includes("no válido") || r.error.includes("terminada") ? "El código ya no es válido o la clase ha terminado." : r.error; btn.disabled = false; btn.textContent = "Entrar a la clase"; return; }
+    location.replace("sesion.html?id=" + r.id);
+  };
+  btn.addEventListener("click", go);
+  nm.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+  nm.focus();
+})();
+</script>
+</body>
+</html>
