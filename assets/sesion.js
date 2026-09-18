@@ -310,7 +310,7 @@
     let code = S.session.guest_code;
     if (!code || !S.session.allow_guests) { const { data, error } = await sb.rpc("set_session_guest_code", { p_session: sessionId, p_enable: true }); if (error) { toast("No se pudo generar: " + error.message); return; } code = data; await loadSession(); }
     const base = location.href.replace(/[^/]*$/, ""), link = base + "entrar.html?clase=" + code, viewLink = base + "ver.html?c=" + code;
-    const msg = `Te invito a la clase "${S.session.title}" (${S.group.name}) del campus ${Campus.cfg.brand}.\nEntra aquí: ${link}\nEscribe tu nombre y el código ${code}. Sin registro.`;
+    const msg = `Te invito a la clase "${S.session.title}" (${S.group.name}) del campus ${Campus.cfg.brand}.\nEntra aquí y escribe tu nombre: ${link}\n(Si te lo pide, el código es ${code}.)`;
     openDialog("Invitar a esta clase", `
       <p class="subtle" style="margin-top:0">Quien tenga este código entra solo a esta clase, sin correo ni contraseña, y caduca al terminar. Para asistentes habituales usa el código de invitados del grupo (Mis grupos → Invitar).</p>
       <div class="code-box"><strong>${esc(code)}</strong><span class="meta">Código de la clase</span></div>

@@ -224,7 +224,7 @@
       d.querySelector("#guest-off")?.addEventListener("click", async () => { await sb.rpc("set_group_guest_code", { p_group: g.id, p_enable: false }); dialog.close(); toast("Código de invitados desactivado"); load(); });
       if (g.allow_guests && g.guest_code) bindGuest(d, g.guest_code);
       function bindGuest(d, code) {
-        const msg = `Hola, te invito al grupo "${g.name}" del campus ${Campus.cfg.brand}.\nEntra aquí: ${guestLink(code)}\nEscribe tu nombre y el código ${code}. Sin registro.${g.schedule_text ? "\nNos vemos " + g.schedule_text + "." : ""}`;
+        const msg = `Hola, te invito al grupo "${g.name}" del campus ${Campus.cfg.brand}.\nEntra aquí y escribe tu nombre: ${guestLink(code)}${g.schedule_text ? "\nNos vemos " + g.schedule_text + "." : ""}`;
         d.querySelector("#guest-copy")?.addEventListener("click", () => copy(guestLink(code)));
         d.querySelector("#guest-wa")?.setAttribute("href", whatsappMessage(msg));
       }
