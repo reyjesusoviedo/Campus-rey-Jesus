@@ -133,5 +133,22 @@
   function qs(name) { return new URLSearchParams(location.search).get(name); }
 
   const isAnon = me => !!me?.user?.is_anonymous;
-  window.Campus = { isAnon, loadSettings, brandMark, helpLinks, settings: () => settingsCache || {}, sb, cfg, esc, fmtDate, initials, toast, currentProfile, requireUser, renderShell, isStaff, whatsappMessage, copy, qs, ROLE_LABEL };
+  // Errores visibles en lugar de pantallas colgadas
+  function showFatal(msg, detail) {
+    if (document.getElementById("campus-fatal")) return;
+    const d = document.createElement("div"); d.id = "campus-fatal";
+    d.style.cssText = "position:fixed;inset:auto 12px 12px 12px;z-index:9999;background:#fff;border:2px solid #d4515c;border-radius:14px;padding:14px 16px;box-shadow:0 18px 45px rgba(0,0,0,.25);font-family:Inter,system-ui,sans-serif;font-size:14px;max-width:520px;margin:0 auto";
+    d.innerHTML = `<b style="color:#a1343e">${msg}</b>${detail ? `<div style="color:#5b6673;font-size:12px;margin-top:4px;word-break:break-word">${String(detail).slice(0, 220)}</div>` : ""}
+      <div style="display:flex;gap:8px;margin-top:10px"><button id="cf-reload" style="border:0;border-radius:10px;padding:8px 14px;font:inherit;font-weight:700;background:#0c70bb;color:#fff">Reintentar</button><button id="cf-hide" style="border:1px solid #dce3e8;border-radius:10px;padding:8px 14px;font:inherit;background:#fff">Cerrar</button></div>
+      <div style="color:#9aa6b2;font-size:11px;margin-top:8px">Campus v${cfg.version || "?"}</div>`;
+    document.body.appendChild(d);
+    d.querySelector("#cf-reload").addEventListener("click", () => location.reload(true));
+    d.querySelector("#cf-hide").addEventListener("click", () => d.remove());
+  }
+  window.addEventListener("error", e => { if (e.message && !/ResizeObserver|Script error/.test(e.message)) showFatal("Algo no ha cargado bien", e.message); });
+  window.addEventListener("unhandledrejection", e => { const m = e.reason?.message || e.reason; if (m && !/AbortError/.test(String(m))) showFatal("Algo no ha cargado bien", m); });
+  // Si una pantalla se queda en "Cargando…" más de 12 segundos, avisamos
+  setTimeout(() => { const l = document.getElementById("loading"); if (l && !l.hidden && l.offsetParent !== null) showFatal("La pantalla está tardando demasiado", "Comprueba tu conexión y pulsa Reintentar. Si sigue igual, avisa a coordinación (v" + (cfg.version || "?") + ")."); }, 12000);
+
+  window.Campus = { isAnon, showFatal, loadSettings, brandMark, helpLinks, settings: () => settingsCache || {}, sb, cfg, esc, fmtDate, initials, toast, currentProfile, requireUser, renderShell, isStaff, whatsappMessage, copy, qs, ROLE_LABEL };
 })();

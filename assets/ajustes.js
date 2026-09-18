@@ -54,6 +54,9 @@
       <div class="esc-card" style="margin-top:12px"><h3>Cursos <span class="lk" id="c-new">+ Nuevo curso</span></h3>
         ${S.courses.length ? `<table class="stable"><tr><th>Curso</th><th>Tipo</th><th>Lecciones</th><th>Duración</th><th>Visible</th><th></th></tr>${S.courses.map(c => `<tr><td><b>${esc(c.title)}</b><br><small class="meta">index.html · ${esc(c.slug)}</small></td><td>${c.type === "live" ? "En directo · " + esc(S.groups.find(g => g.id === c.group_id)?.name || "sin grupo") : "A tu ritmo"}</td><td>${(c.lessons || []).length}</td><td>${c.duration_days} días</td><td>${c.open ? `<span class="tag">Sí</span>` : `<span class="tag closed">No</span>`}</td><td><div class="acts"><button data-edit="${c.id}">Editar</button><button data-copy="${c.slug}">Copiar enlace</button><button data-del="${c.id}">Borrar</button></div></td></tr>`).join("")}</table>` : `<p class="subtle">Aún no hay cursos. Crea el primero: elige el tipo, las lecciones de la biblioteca y la duración.</p>`}
         <p class="meta" style="margin-top:10px"><button class="button secondary small" id="cleanup">Borrar inscripciones caducadas ahora</button></p></div>
+      <div class="esc-card" style="margin-top:12px"><h3>🩺 Estado del campus <span class="lk" id="chk-run">Comprobar ahora</span></h3>
+        <p class="meta">Versión instalada: <b>${esc(cfg.version || "sin versión")}</b> · <button class="button secondary small" id="chk-reload">Actualizar este dispositivo</button></p>
+        <div id="chk-out"></div></div>
       <div class="esc-card" style="margin-top:12px;border:1px solid #f1c8ce"><h3>🧹 Datos de prueba <span class="lk" id="dp-refresh">Actualizar</span></h3>
         <p class="meta" id="dp-counts">Cargando recuento…</p>
         <p class="subtle" style="font-size:14px">Marca lo que quieras borrar del campus. No se tocan los ajustes, el logo ni tu cuenta de coordinación.</p>
@@ -65,12 +68,47 @@
     app.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", () => Campus.copy(location.href.replace(/[^/]*$/, "entrar.html?curso=" + b.dataset.copy))));
     app.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", async () => { const c = S.courses.find(x => x.id === b.dataset.del); if (prompt(`Vas a borrar el curso «${c.title}» y todas sus inscripciones. Escribe BORRAR para confirmar:`) !== "BORRAR") return; await sb.from("courses").delete().eq("id", c.id); toast("Curso borrado"); load(); }));
     loadCounts();
+    app.querySelector("#chk-run").addEventListener("click", runCheck);
+    app.querySelector("#chk-reload").addEventListener("click", async () => { try { if (window.caches) { const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); } } catch {} location.replace(location.pathname + "?r=" + Date.now()); });
+    runCheck();
     app.querySelector("#dp-refresh").addEventListener("click", loadCounts);
     app.querySelector("#dp-guests").addEventListener("click", async () => { const { data, error } = await sb.rpc("purge_guests", { p_all: false }); if (error) { toast(error.message); return; } toast(`${data} invitados antiguos borrados`); loadCounts(); });
     app.querySelector("#dp-purge").addEventListener("click", purgeDialog);
     app.querySelector("#cleanup").addEventListener("click", async () => { const { data, error } = await sb.rpc("cleanup_enrollments"); if (error) toast(error.message); else toast(`${data} inscripciones borradas`); });
   }
 
+  const CHECKS = [
+    ["Ajustes del campus", () => sb.from("settings").select("id").limit(1)],
+    ["Grupos y clases", () => sb.from("sessions").select("id").limit(1)],
+    ["Biblioteca de material", () => sb.rpc("library_list")],
+    ["Cursos", () => sb.from("courses").select("id").limit(1)],
+    ["Panel y cifras", () => sb.rpc("dashboard_stats")],
+    ["Seguimiento", () => sb.rpc("followup")],
+    ["Actividad reciente", () => sb.rpc("recent_activity", { p_limit: 1 })],
+    ["Buscador", () => sb.rpc("global_search", { q: "a" })],
+    ["Entrada a clase por enlace", () => sb.rpc("class_info", { p_code: "TEST00" })],
+    ["Invitado atado a su clase", () => sb.rpc("my_guest_session")],
+    ["Alta de personas con contraseña", () => sb.rpc("create_staff_user", { p_email: "", p_password: "", p_name: "", p_role: "teacher" })],
+    ["Inicio rápido de clase", () => sb.rpc("quick_session", { p_group: "00000000-0000-0000-0000-000000000000", p_title: null, p_starts: new Date().toISOString(), p_start_now: false })],
+    ["Eliminar personas", () => sb.rpc("delete_person", { p_user: "00000000-0000-0000-0000-000000000000" })],
+    ["Recuento del campus", () => sb.rpc("campus_counts")],
+    ["Clases recurrentes", () => sb.rpc("ensure_recurring_sessions", { p_days: 0 })],
+    ["Alumnos registrados", () => sb.rpc("registered_students")]
+  ];
+  async function runCheck() {
+    const out = app.querySelector("#chk-out"); if (!out) return;
+    out.innerHTML = `<p class="meta">Comprobando…</p>`;
+    const rows = [];
+    for (const [name, fn] of CHECKS) {
+      let ok = true, msg = "";
+      try { const r = await fn(); if (r.error) { const m = r.error.message || ""; ok = /does not exist|schema cache|not find/i.test(m) ? false : true; msg = ok ? "" : m; if (ok) msg = ""; } }
+      catch (e) { ok = false; msg = e.message || String(e); }
+      rows.push([name, ok, msg]);
+    }
+    const bad = rows.filter(r => !r[1]);
+    out.innerHTML = `<p class="${bad.length ? "notice" : "meta"}">${bad.length ? `Faltan <b>${bad.length}</b> piezas: ejecuta en Supabase los parches que se indican.` : "Todo correcto: el campus tiene todas las piezas instaladas."}</p>
+      <div style="display:grid;gap:4px;margin-top:8px">${rows.map(([n, ok, m]) => `<div style="display:flex;gap:8px;align-items:center;font-size:14px"><span>${ok ? "✅" : "❌"}</span><span style="flex:1">${esc(n)}</span>${m ? `<small class="meta" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(m)}">${esc(m)}</small>` : ""}</div>`).join("")}</div>`;
+  }
   const PURGE = [["sessions", "Clases (y sus respuestas)"], ["groups", "Grupos (y sus clases)"], ["students", "Alumnos registrados"], ["guests", "Invitados anónimos"], ["teachers", "Maestros (no coordinación)"], ["materials", "Material de la biblioteca"], ["courses", "Cursos e inscripciones"], ["templates", "Plantillas de clase"]];
   async function loadCounts() {
     const { data, error } = await sb.rpc("campus_counts");

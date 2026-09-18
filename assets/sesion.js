@@ -711,7 +711,10 @@
   }
   async function mountJitsi(container) {
     if (S.jitsi && S.jitsiEl && document.body.contains(S.jitsiEl)) { container.appendChild(S.jitsiEl); return; }
-    try { await loadJitsiApi(); } catch { container.innerHTML = `<p class="hint">No se pudo cargar el vídeo. ${videoLinkHtml()}</p>`; return; }
+    container.innerHTML = `<p class="hint" id="vid-wait">Conectando el vídeo…</p>`;
+    try { await Promise.race([loadJitsiApi(), new Promise((_, rej) => setTimeout(() => rej(new Error("tiempo")), 12000))]); }
+    catch { container.innerHTML = `<p class="hint">No se pudo conectar el vídeo (la clase sigue funcionando). ${videoLinkHtml()} <button class="button secondary small" id="vid-retry">Reintentar</button></p>`; container.querySelector("#vid-retry")?.addEventListener("click", () => { S.jitsi = null; S.jitsiEl = null; mountJitsi(container); }); return; }
+    container.innerHTML = "";
     const el = document.createElement("div"); el.className = "jitsi-box"; container.appendChild(el); S.jitsiEl = el;
     S.jitsi = new JitsiMeetExternalAPI(Campus.cfg.jitsiDomain, {
       roomName: jitsiRoom(), parentNode: el, width: "100%", height: "100%", lang: "es",
@@ -1063,10 +1066,18 @@
   }
 
   // ---------- arranque ----------
-  if (!(await loadSession())) return;
-  if (!S.teacher) sb.from("attendance").insert({ session_id: sessionId, user_id: me.user.id }).then(() => {});
-  await namesFor([S.group.teacher_id]);
-  if (S.teacher) await loadAgenda();
-  await refreshAll(true); subscribe();
-  $("loading")?.remove(); const cont = $("contenido"); if (cont) cont.hidden = false;
+  const bootFail = setTimeout(() => { const l = $("loading"); if (l) l.innerHTML = `No se pudo abrir la clase. <a href="#" onclick="location.reload();return false">Reintentar</a>`; }, 10000);
+  try {
+    if (!(await loadSession())) { clearTimeout(bootFail); return; }
+    if (!S.teacher) sb.from("attendance").insert({ session_id: sessionId, user_id: me.user.id }).then(() => {});
+    await namesFor([S.group.teacher_id]);
+    if (S.teacher) await loadAgenda();
+    await refreshAll(true); subscribe();
+    clearTimeout(bootFail);
+    $("loading")?.remove(); const cont = $("contenido"); if (cont) cont.hidden = false;
+  } catch (e) {
+    clearTimeout(bootFail);
+    const l = $("loading"); if (l) l.innerHTML = `No se pudo abrir la clase: ${esc(String((e && e.message) || e)).slice(0, 120)}. <a href="#" onclick="location.reload();return false">Reintentar</a>`;
+    if (Campus.showFatal) Campus.showFatal("No se pudo abrir la clase", (e && e.message) || e);
+  }
 })();
