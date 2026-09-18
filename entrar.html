@@ -27,6 +27,7 @@
   <div class="field" id="pass-field" hidden><label for="password">Contraseña</label><input id="password" type="password" autocomplete="current-password"></div>
   <p class="form-error" id="error" role="alert"></p>
   <button class="button" id="go" style="width:100%">Crear mi acceso</button>
+  <p class="meta" id="forgot" hidden style="margin-top:10px;text-align:center"><a href="#" id="forgot-link">¿Olvidaste la contraseña?</a></p>
   <p class="meta" id="hint" style="margin-top:14px">Recibirás un enlace en tu correo para entrar, sin contraseña. Después, dentro, escribe el <strong>código del grupo</strong> que te ha dado tu maestro.</p>
 </main>
 
@@ -40,7 +41,7 @@
   document.querySelector("[data-brand]").innerHTML = `${Campus.brandMark()}<span>${esc(cfg.brand)}<small>${esc(cfg.tagline)}</small></span>`;
 
   // Si ya hay sesión (o llega desde un enlace mágico), entrar directamente
-  const wantsGuest = !!new URLSearchParams(location.search).get("clase"), hasInvite = !!new URLSearchParams(location.search).get("equipo") || !!new URLSearchParams(location.search).get("curso");
+  const wantsGuest = !!new URLSearchParams(location.search).get("clase"), hasInvite = !!new URLSearchParams(location.search).get("equipo") || !!new URLSearchParams(location.search).get("curso") || !!new URLSearchParams(location.search).get("recuperar") || /type=recovery/.test(location.hash);
   sb.auth.onAuthStateChange((event, session) => { if (session && !wantsGuest) location.replace("panel.html"); });
   const { data: { session } } = await sb.auth.getSession();
   if (session && !wantsGuest && !hasInvite) { location.replace("panel.html"); return; }
@@ -70,11 +71,13 @@
     }
   }
   const preCode = new URLSearchParams(location.search).get("clase");
-  if (preCode) { document.getElementById("class-code").value = preCode.toUpperCase(); setTimeout(() => document.querySelector('[data-mode="guest"]').click(), 0); }
+  if (preCode) { try { localStorage.setItem("pendingClass", preCode.toUpperCase()); } catch {} document.getElementById("class-code").value = preCode.toUpperCase(); setTimeout(() => document.querySelector('[data-mode="guest"]').click(), 0);
+    const { data: { session: cur } } = await sb.auth.getSession(); if (cur && !cur.user.is_anonymous) { location.replace("panel.html"); return; } }
   document.querySelectorAll("[data-mode]").forEach(b => b.addEventListener("click", () => {
     mode = b.dataset.mode;
     document.querySelectorAll("[data-mode]").forEach(x => x.setAttribute("aria-pressed", x === b));
     document.getElementById("pass-field").hidden = mode !== "password";
+    document.getElementById("forgot").hidden = mode !== "password";
     document.getElementById("name-field").hidden = !(mode === "signup" || mode === "guest");
     document.getElementById("code-field").hidden = mode !== "guest";
     document.getElementById("email-field").hidden = mode === "guest";
@@ -92,6 +95,7 @@
       btn.disabled = true;
       try {
         const { data: { session: cur } } = await sb.auth.getSession();
+        if (cur && !cur.user.is_anonymous) { const r = await sb.rpc("join_with_code_target", { p_code: code }); if (r.error) { err.textContent = "Código no válido o clase terminada."; return; } location.replace(r.data ? "sesion.html?id=" + r.data : "panel.html"); return; }
         if (!cur) { const { error } = await sb.auth.signInAnonymously({ options: { data: { full_name: name } } }); if (error) { err.textContent = error.message.includes("Anonymous") ? "El acceso de invitados no está activado. Avisa a coordinación." : error.message; return; } }
         const { data: sid, error } = await sb.rpc("join_as_guest", { p_code: code, p_name: name });
         if (error) { err.textContent = /no válido|caducado|terminada/i.test(error.message) ? "Código no válido, caducado o clase terminada. Pide a tu maestro el código actual." : "No se pudo entrar: " + error.message; return; }
@@ -114,7 +118,7 @@
         if (mode === "signup" && !name) { err.textContent = "Escribe tu nombre."; return; }
         if (mode === "signup" && !document.getElementById("phone-field").hidden && !phone) { err.textContent = "Escribe tu teléfono."; return; }
         try { if (phone) localStorage.setItem("pendingPhone", phone); } catch {}
-        const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: mode === "signup", data: { full_name: name || undefined, phone: phone || undefined }, emailRedirectTo: location.href.replace(/[^/]*$/, "entrar.html") + (courseSlug ? "?curso=" + encodeURIComponent(courseSlug) : inviteToken ? "?equipo=" + encodeURIComponent(inviteToken) : "") } });
+        const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: mode === "signup", data: { full_name: name || undefined, phone: phone || undefined }, emailRedirectTo: location.href.replace(/[^/]*$/, "entrar.html") + (courseSlug ? "?curso=" + encodeURIComponent(courseSlug) : inviteToken ? "?equipo=" + encodeURIComponent(inviteToken) : preCode ? "?clase=" + encodeURIComponent(preCode) : "") } });
         if (error) { err.textContent = error.message.includes("Signups") ? "Este correo no tiene acceso. Usa la pestaña «Primera vez»." : error.message; return; }
         toast("Enlace enviado. Revisa tu correo.");
         document.getElementById("hint").textContent = "Te hemos enviado un enlace a " + email + ". Ábrelo desde este mismo dispositivo.";
@@ -122,6 +126,20 @@
     } finally { btn.disabled = false; }
   });
   document.getElementById("password").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("go").click(); });
+  document.getElementById("forgot-link").addEventListener("click", async e => {
+    e.preventDefault(); const email = document.getElementById("email").value.trim(); if (!email) { err.textContent = "Escribe tu correo y vuelve a pulsar."; return; }
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.href.replace(/[^/]*$/, "entrar.html") + "?recuperar=1" });
+    err.textContent = ""; toast(error ? error.message : "Te hemos enviado un correo para crear una contraseña nueva.");
+  });
+  // Volver desde el correo de recuperación: pedir contraseña nueva
+  if (new URLSearchParams(location.search).get("recuperar") || /type=recovery/.test(location.hash)) {
+    sb.auth.onAuthStateChange(async (event, session) => {
+      if (event === "PASSWORD_RECOVERY" || (session && new URLSearchParams(location.search).get("recuperar"))) {
+        const pw = prompt("Escribe tu contraseña nueva (mínimo 6 caracteres):"); if (!pw) return;
+        const { error } = await sb.auth.updateUser({ password: pw }); toast(error ? error.message : "Contraseña guardada"); if (!error) location.replace("panel.html");
+      }
+    });
+  }
 })();
 </script>
 </body>
