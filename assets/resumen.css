@@ -7,19 +7,23 @@
 .hello .new .dd { position: absolute; right: 0; top: 110%; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); min-width: 200px; z-index: 30; }
 .hello .new .dd a, .hello .new .dd button { display: block; width: 100%; text-align: left; padding: 10px 14px; border: 0; background: none; font: inherit; font-weight: 600; color: var(--ink); text-decoration: none; cursor: pointer; border-top: 1px solid #edf1f6; }
 .hello .new .dd a:first-child { border-top: 0; } .hello .new .dd a:hover, .hello .new .dd button:hover { background: #f2f7fc; }
-.rkpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
+.rkpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
 .rkpi { background: #fff; border-radius: 16px; padding: 16px 18px; display: flex; align-items: center; gap: 14px; text-decoration: none; color: inherit; box-shadow: 0 6px 18px rgba(11,47,107,.06); }
 .rkpi .ic { width: 60px; height: 60px; border-radius: 50%; display: grid; place-items: center; background: #e3eefa; color: #0c70bb; flex: none; } .rkpi .ic.g { background: #dff5ea; color: #1a8f57; } .rkpi .ic svg { width: 32px; height: 32px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 .rkpi .kt { flex: 1; } .rkpi .kt span { color: var(--muted); font-weight: 600; font-size: 13px; } .rkpi .kt b { display: block; font-size: 1.9rem; font-weight: 900; color: #0b2f6b; line-height: 1.1; } .rkpi .kt small { color: #1a8f57; font-weight: 700; }
 .rkpi .arr { color: #0c70bb; font-weight: 900; font-size: 20px; }
 .rgrid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 14px; align-items: start; }
-.rcard { background: #fff; border-radius: 16px; padding: 16px 18px; box-shadow: 0 6px 18px rgba(11,47,107,.06); }
+.rcard { background: #fff; border-radius: 16px; padding: 16px 18px; box-shadow: 0 6px 18px rgba(11,47,107,.06); min-width: 0; }
+.rgrid > * { min-width: 0; }
+.rcard .ftable-wrap { overflow-x: auto; }
 .rcard h3 { margin: 0 0 10px; font-family: Inter, sans-serif; font-weight: 900; font-size: 1.15rem; color: #0b2f6b; display: flex; align-items: center; gap: 10px; } .rcard h3 .lk { margin-left: auto; color: #0c70bb; font-size: 13px; font-weight: 700; text-decoration: none; }
 .act { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid #edf1f6; text-decoration: none; color: inherit; } .act:first-of-type { border-top: 0; }
 .act .ic { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: #e3eefa; color: #0c70bb; flex: none; font-size: 18px; } .act .ic.g { background: #dff5ea; color: #1a8f57; }
 .act b { display: block; color: #0b2f6b; font-size: 14px; } .act small { color: var(--muted); font-size: 12px; }
-.quick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.quick a, .quick button { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px; text-decoration: none; color: #0b2f6b; font: inherit; font-weight: 700; font-size: 14px; background: #fff; cursor: pointer; text-align: left; }
+.quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.quick.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.quick.week { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.quick a, .quick button { min-width: 0; display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px; text-decoration: none; color: #0b2f6b; font: inherit; font-weight: 700; font-size: 14px; background: #fff; cursor: pointer; text-align: left; }
 .quick .ic { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: #e3eefa; flex: none; font-size: 18px; } .quick .ic.g { background: #dff5ea; }
 .quick .arr { margin-left: auto; color: #0c70bb; }
 .ftable { width: 100%; border-collapse: collapse; font-size: 14px; } .ftable th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 700; padding: 8px; background: #f5f8fc; } .ftable td { padding: 9px 8px; border-top: 1px solid #edf1f6; vertical-align: middle; }
@@ -31,5 +35,5 @@
 .rfoot { margin-top: 14px; background: #fff; border-radius: 16px; padding: 12px 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; color: #0b2f6b; font-weight: 700; font-size: 13px; }
 .rfoot .v { display: flex; flex-wrap: wrap; gap: 16px; margin-left: auto; } .rfoot .v span { letter-spacing: .06em; text-transform: uppercase; font-size: 12px; }
 .filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; } .filters button { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 12px; font: inherit; font-weight: 700; color: var(--muted); cursor: pointer; } .filters button[aria-pressed="true"] { background: #0b2f6b; color: #fff; border-color: #0b2f6b; }
-@media (max-width: 1100px) { .rkpis { grid-template-columns: 1fr 1fr; } .rgrid { grid-template-columns: 1fr; } }
-@media (max-width: 700px) { .rkpis { gap: 8px; } .rkpi { padding: 10px 12px; gap: 10px; } .rkpi .ic { width: 44px; height: 44px; } .rkpi .ic svg { width: 24px; height: 24px; } .rkpi .kt b { font-size: 1.4rem; } .rkpi .arr { display: none; } .hello h1 { font-size: 1.5rem; } .hello .new { margin-left: 0; width: 100%; } .hello .new > button { width: 100%; } .quick { grid-template-columns: 1fr 1fr; } .ftable th:nth-child(3), .ftable td:nth-child(3) { display: none; } }
+@media (max-width: 1100px) { .rkpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rgrid { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .quick.four { grid-template-columns: repeat(2, minmax(0, 1fr)); } .quick a, .quick button { font-size: 13px; padding: 10px; } .quick .ic { width: 32px; height: 32px; font-size: 16px; } .rkpis { gap: 8px; } .rkpi { padding: 10px 12px; gap: 10px; } .rkpi .ic { width: 44px; height: 44px; } .rkpi .ic svg { width: 24px; height: 24px; } .rkpi .kt b { font-size: 1.4rem; } .rkpi .arr { display: none; } .hello h1 { font-size: 1.5rem; } .hello .new { margin-left: 0; width: 100%; } .hello .new > button { width: 100%; } .quick { grid-template-columns: 1fr 1fr; } .ftable th:nth-child(3), .ftable td:nth-child(3) { display: none; } }

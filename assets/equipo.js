@@ -31,11 +31,11 @@
     const active = S.staff.filter(x => x.active), pending = S.invites.filter(x => !x.accepted_at && new Date(x.expires_at) > Date.now());
     const students = new Set(S.groups.flatMap(g => g.memberships.filter(m => m.role !== "teacher").map(m => m.user_id))).size;
     app.innerHTML = `
-      <div class="eq-hello"><div><h1>Quién da clase, con qué rol y en qué grupos</h1><p>Gestiona el equipo de maestros y colaboradores del campus.</p></div><button class="button teal" id="b-invite">＋ Invitar a alguien</button></div>
-      <div class="stats"><div class="stat"><span class="sic">🎓</span><span><b>${active.filter(x => x.role === "teacher").length}</b><span>maestros activos</span></span></div><div class="stat"><span class="sic gold">👥</span><span><b>${active.filter(x => x.role === "coordinator").length}</b><span>coordinación</span></span></div><div class="stat"><span class="sic">✉️</span><span><b>${pending.length}</b><span>invitaci${pending.length === 1 ? "ón pendiente" : "ones pendientes"}</span></span></div><div class="stat"><span class="sic green">👥</span><span><b>${students}</b><span>alumnos</span></span></div></div>
-      <div class="eq-tabs"><button data-tab="staff" aria-pressed="${S.tab === "staff"}">Equipo (${S.staff.length})</button><button data-tab="invites" aria-pressed="${S.tab === "invites"}">Invitaciones (${pending.length})</button><button data-tab="students" aria-pressed="${S.tab === "students"}">Alumnos (${students})</button><button data-tab="courses" aria-pressed="${S.tab === "courses"}">Cursos libres</button></div>
+      <div class="eq-hello"><div><h1>Quién da clase, con qué rol y en qué grupos</h1><p>Gestiona el equipo de maestros y colaboradores del campus.</p></div><button class="button teal" id="b-invite">＋ Nuevo miembro</button></div>
+      <div class="stats"><div class="stat"><span class="sic">🎓</span><span><b>${active.filter(x => x.role === "teacher").length}</b><span>maestros activos</span></span></div><div class="stat"><span class="sic gold">👥</span><span><b>${active.filter(x => x.role === "coordinator").length}</b><span>coordinación</span></span></div><div class="stat"><span class="sic">👥</span><span><b>${S.groups.length}</b><span>grupos</span></span></div><div class="stat"><span class="sic green">👥</span><span><b>${students}</b><span>alumnos</span></span></div></div>
+      <div class="eq-tabs"><button data-tab="staff" aria-pressed="${S.tab === "staff"}">Equipo (${S.staff.length})</button><button data-tab="students" aria-pressed="${S.tab === "students"}">Alumnos (${students})</button><button data-tab="courses" aria-pressed="${S.tab === "courses"}">Cursos libres</button></div>
       <div class="eq-card" id="body"></div>`;
-    app.querySelector("#b-invite").addEventListener("click", () => inviteDialog());
+    app.querySelector("#b-invite").addEventListener("click", () => newMemberDialog());
     app.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => { S.tab = b.dataset.tab; render(); }));
     if (S.tab === "staff") renderStaff(); else if (S.tab === "invites") renderInvites(); else if (S.tab === "courses") renderCourses(); else renderStudents();
   }
@@ -44,17 +44,17 @@
     const body = app.querySelector("#body");
     const rows = S.staff.map(p => {
       const gs = S.groups.filter(g => g.teacher_id === p.id);
-      const inv = S.invites.find(i => i.accepted_by === p.id);
-      const state = !p.active ? `<span class="stt off">Desactivado</span>` : gs.length || p.role === "coordinator" ? `<span class="stt on">Activo</span>` : inv ? `<span class="stt accepted">Invitación aceptada</span>` : `<span class="stt nogroup">Sin grupo</span>`;
+      const state = !p.active ? `<span class="stt off">Desactivado</span>` : gs.length || p.role === "coordinator" ? `<span class="stt on">Activo</span>` : `<span class="stt nogroup">Sin grupo</span>`;
       return `<tr class="${p.active ? "" : "inactive"}"><td><div class="who"><span class="avatar teal">${esc(initials(p.full_name))}</span><span><b>${esc(p.full_name)}${p.id === me.user.id ? " (tú)" : ""}</b><small>${esc(p.email || "")}</small></span></div></td>
         <td><span class="tag" style="${p.role === "coordinator" ? "background:#faf0d6;color:#7a5c14" : ""}">${ROLE[p.role]}</span></td>
         <td class="groups">${p.role === "coordinator" && !gs.length ? `<span class="tag closed">Todos</span>` : gs.map(g => `<span style="--gc:${gcolor(g)}">${esc(g.name)}</span>`).join("") || `<span class="tag closed">Sin grupo</span>`}</td>
         <td>${S.last[p.id] ? fmtDate(S.last[p.id], { day: "numeric", month: "short" }) : "—"}</td><td>${state}</td>
-        <td><div class="acts">${p.active ? `<button data-groups="${p.id}">👥 Grupos</button>${p.id !== me.user.id ? `<button data-role="${p.id}">✏️ Rol</button><button class="danger" data-off="${p.id}">🗑 Desactivar</button>` : ""}` : `<button data-on="${p.id}">Reactivar</button>`}</div></td></tr>`;
+        <td><div class="acts">${p.active ? `<button data-groups="${p.id}">👥 Grupos</button>${p.id !== me.user.id ? `<button data-role="${p.id}">✏️ Rol</button><button data-pw="${p.id}">🔑 Contraseña</button><button class="danger" data-off="${p.id}">🗑 Desactivar</button>` : ""}` : `<button data-on="${p.id}">Reactivar</button>`}</div></td></tr>`;
     });
     body.innerHTML = `<table><tr><th>Persona</th><th>Rol</th><th>Grupos</th><th>Última clase</th><th>Estado</th><th></th></tr>${rows.join("")}</table>`;
     body.querySelectorAll("[data-groups]").forEach(b => b.addEventListener("click", () => groupsDialog(S.staff.find(p => p.id === b.dataset.groups))));
     body.querySelectorAll("[data-role]").forEach(b => b.addEventListener("click", () => roleDialog(S.staff.find(p => p.id === b.dataset.role))));
+    body.querySelectorAll("[data-pw]").forEach(b => b.addEventListener("click", () => passwordDialog(S.staff.find(p => p.id === b.dataset.pw))));
     body.querySelectorAll("[data-off]").forEach(b => b.addEventListener("click", async () => { const p = S.staff.find(x => x.id === b.dataset.off); if (!confirm(`¿Desactivar a ${p.full_name}? Dejará de poder entrar como ${ROLE[p.role].toLowerCase()}; su historial se conserva.`)) return; const { error } = await sb.from("profiles").update({ active: false }).eq("id", p.id); if (error) toast(error.message); else toast("Desactivado"); load(); }));
     body.querySelectorAll("[data-on]").forEach(b => b.addEventListener("click", async () => { await sb.from("profiles").update({ active: true }).eq("id", b.dataset.on); toast("Reactivado"); load(); }));
   }
@@ -82,6 +82,37 @@
     openDialog("Invitación para " + (i.full_name || i.email), `<p class="subtle" style="margin-top:0">Envíale este enlace. Al abrirlo entra con su correo <b>${esc(i.email)}</b> y queda dado de alta como ${ROLE[i.role].toLowerCase()}.</p>
       <div class="link-box">${esc(inviteLink(i.token))}</div>
       <div class="live-controls"><button class="button secondary small" id="l-copy">Copiar enlace</button><a class="button small" target="_blank" rel="noopener" href="${whatsappMessage(inviteText(i))}">Enviar por WhatsApp</a><a class="button secondary small" href="mailto:${esc(i.email)}?subject=${encodeURIComponent("Alta en el campus " + Campus.cfg.brand)}&body=${encodeURIComponent(inviteText(i))}">Enviar por correo</a></div>`, d => d.querySelector("#l-copy").addEventListener("click", () => copy(inviteLink(i.token))));
+  }
+  const genPw = () => { const a = "abcdefghjkmnpqrstuvwxyz23456789"; let p = ""; for (let i = 0; i < 8; i++) p += a[Math.floor(Math.random() * a.length)]; return p; };
+  function accessText(name, email, pw) { return `Hola${name ? " " + name.split(" ")[0] : ""}, ya tienes acceso al campus ${Campus.cfg.brand}.\nEntra en: ${baseUrl()}entrar.html (pestaña «Contraseña»)\nCorreo: ${email}\nContraseña: ${pw}\nPuedes cambiarla en «Mi perfil» cuando quieras.`; }
+  function newMemberDialog() {
+    dialog.classList.add("side-panel"); dialog.addEventListener("close", () => dialog.classList.remove("side-panel"), { once: true });
+    openDialog("Nuevo miembro del equipo", `<p class="subtle" style="margin-top:0">Se crea el usuario al momento, con su contraseña inicial. Se la pasas por WhatsApp y podrá cambiarla en «Mi perfil».</p><div class="inline-form">
+      <div class="row"><div class="field"><label for="n-name">Nombre y apellido</label><input id="n-name"></div><div class="field"><label for="n-email">Correo</label><input id="n-email" type="email"></div></div>
+      <div class="row"><div class="field"><label for="n-phone">Teléfono (WhatsApp)</label><input id="n-phone" placeholder="+34 …"></div><div class="field"><label for="n-role">Rol</label><select id="n-role"><option value="teacher">Maestro/a</option><option value="coordinator">Coordinación</option></select></div></div>
+      <div class="field"><label for="n-group">Grupo (opcional)</label><select id="n-group"><option value="">Sin grupo por ahora</option>${S.groups.map(g => `<option value="${g.id}">${esc(g.name)}${g.teacher_id ? "" : " · sin maestro"}</option>`).join("")}</select></div>
+      <div class="field"><label for="n-pw">Contraseña inicial</label><div style="display:flex;gap:6px"><input id="n-pw" value="${genPw()}" style="flex:1"><button class="button secondary small" id="n-gen" type="button">Generar</button></div></div>
+      <p class="form-error" id="n-err"></p>
+      <div class="live-controls"><button class="button secondary" id="n-cancel">Cancelar</button><button class="button teal" id="n-go">Crear acceso</button></div></div>`, d => {
+      d.querySelector("#n-cancel").addEventListener("click", () => dialog.close());
+      d.querySelector("#n-gen").addEventListener("click", () => d.querySelector("#n-pw").value = genPw());
+      d.querySelector("#n-go").addEventListener("click", async () => {
+        const err = d.querySelector("#n-err"); const email = d.querySelector("#n-email").value.trim().toLowerCase(), name = d.querySelector("#n-name").value.trim(), pw = d.querySelector("#n-pw").value;
+        if (!name) { err.textContent = "Escribe el nombre."; return; } if (!email.includes("@")) { err.textContent = "Escribe un correo válido."; return; } if (pw.length < 6) { err.textContent = "Contraseña de al menos 6 caracteres."; return; }
+        d.querySelector("#n-go").disabled = true;
+        const { error } = await sb.rpc("create_staff_user", { p_email: email, p_password: pw, p_name: name, p_role: d.querySelector("#n-role").value, p_phone: d.querySelector("#n-phone").value.trim() || null, p_group: d.querySelector("#n-group").value || null });
+        d.querySelector("#n-go").disabled = false;
+        if (error) { err.textContent = error.message; return; }
+        dialog.close(); await load();
+        openDialog("Acceso creado", `<p class="subtle" style="margin-top:0">Pásale estos datos. Podrá cambiar la contraseña en «Mi perfil».</p><div class="link-box">${esc(accessText(name, email, pw)).replace(/\n/g, "<br>")}</div><div class="live-controls"><button class="button secondary small" id="a-copy">Copiar datos</button><a class="button small" target="_blank" rel="noopener" href="${whatsappMessage(accessText(name, email, pw))}">Enviar por WhatsApp</a></div>`, dd => dd.querySelector("#a-copy").addEventListener("click", () => copy(accessText(name, email, pw))));
+      });
+    });
+  }
+  function passwordDialog(p) {
+    openDialog("Contraseña de " + p.full_name, `<p class="subtle" style="margin-top:0">Pon una contraseña nueva y pásasela. Podrá cambiarla en «Mi perfil».</p><div class="inline-form"><div class="field"><label for="pw-new">Nueva contraseña</label><div style="display:flex;gap:6px"><input id="pw-new" value="${genPw()}" style="flex:1"><button class="button secondary small" id="pw-gen" type="button">Generar</button></div></div><p class="form-error" id="pw-err"></p><div class="live-controls"><button class="button" id="pw-go">Guardar</button></div></div>`, d => {
+      d.querySelector("#pw-gen").addEventListener("click", () => d.querySelector("#pw-new").value = genPw());
+      d.querySelector("#pw-go").addEventListener("click", async () => { const pw = d.querySelector("#pw-new").value; const { error } = await sb.rpc("reset_staff_password", { p_user: p.id, p_password: pw }); if (error) { d.querySelector("#pw-err").textContent = error.message; return; } dialog.close(); openDialog("Contraseña cambiada", `<div class="link-box">${esc(accessText(p.full_name, p.email || "", pw)).replace(/\n/g, "<br>")}</div><div class="live-controls"><button class="button secondary small" id="a-copy">Copiar datos</button>${p.phone ? `<a class="button small" target="_blank" rel="noopener" href="${whatsappMessage(accessText(p.full_name, p.email || "", pw))}">Enviar por WhatsApp</a>` : ""}</div>`, dd => dd.querySelector("#a-copy").addEventListener("click", () => copy(accessText(p.full_name, p.email || "", pw)))); });
+    });
   }
   function inviteDialog() {
     dialog.classList.add("side-panel"); dialog.addEventListener("close", () => dialog.classList.remove("side-panel"), { once: true });

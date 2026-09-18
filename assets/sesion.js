@@ -176,7 +176,7 @@
       return;
     }
     if (act === "invite") { inviteDialog(); return; }
-    if (act === "logout") { await sb.auth.signOut(); location.replace("index.html"); return; }
+    if (act === "logout") { await sb.auth.signOut(); location.replace("entrar.html"); return; }
     if (act === "materials") { materialsDialog(); return; }
     if (act === "project") { projectDialog(); return; }
     if (act === "activity") { S.ctab = "act"; renderMain(); $("main").querySelector("details.editor")?.scrollIntoView({ behavior: "smooth" }); const d = $("main").querySelector("details.editor"); if (d) d.open = true; return; }
@@ -309,7 +309,7 @@
   async function inviteDialog() {
     let code = S.session.guest_code;
     if (!code || !S.session.allow_guests) { const { data, error } = await sb.rpc("set_session_guest_code", { p_session: sessionId, p_enable: true }); if (error) { toast("No se pudo generar: " + error.message); return; } code = data; await loadSession(); }
-    const base = location.href.replace(/[^/]*$/, ""), link = base + "index.html?clase=" + code, viewLink = base + "ver.html?c=" + code;
+    const base = location.href.replace(/[^/]*$/, ""), link = base + "entrar.html?clase=" + code, viewLink = base + "ver.html?c=" + code;
     const msg = `Te invito a la clase "${S.session.title}" (${S.group.name}) del campus ${Campus.cfg.brand}.\nEntra aquí: ${link}\nEscribe tu nombre y el código ${code}. Sin registro.`;
     openDialog("Invitar a esta clase", `
       <p class="subtle" style="margin-top:0">Quien tenga este código entra solo a esta clase, sin correo ni contraseña, y caduca al terminar. Para asistentes habituales usa el código de invitados del grupo (Mis grupos → Invitar).</p>
@@ -320,7 +320,16 @@
       <label style="display:flex;gap:10px;align-items:center;font-size:15px"><input type="checkbox" id="pv" ${S.session.public_view ? "checked" : ""}> <span><strong>Modo «solo ver»</strong><br><span class="meta">Un enlace público que muestra lo proyectado y sigue al maestro, sin poder responder. Para proyectar en una sala o compartir con quien solo mira.</span></span></label>
       <div id="pv-link" ${S.session.public_view ? "" : "hidden"} style="margin-top:10px"><input readonly value="${esc(viewLink)}" style="width:100%"><div class="live-controls"><button class="button secondary small" id="pv-copy">Copiar enlace público</button></div></div>
       <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+      <button class="button secondary small" id="inv-add">Añadir alumno ya registrado</button>
       <button class="button secondary small" id="inv-off">Dejar de admitir invitados</button>`, d => {
+      d.querySelector("#inv-add").addEventListener("click", async () => {
+        const { data: regs } = await sb.rpc("registered_students"); const inGroup = new Set(S.members.map(m => m.user_id));
+        const list = (regs || []).filter(r => !inGroup.has(r.id));
+        openDialog("Añadir alumno al grupo", list.length ? `<input type="search" id="ar-q" placeholder="Buscar…" style="width:100%;margin-bottom:8px"><ul class="members" id="ar-list">${list.map(r => `<li data-n="${esc(r.full_name.toLowerCase())}"><span style="flex:1">${esc(r.full_name)}<br><small class="meta">${esc(r.email || "")}</small></span><button class="button teal small" data-add="${r.id}">Añadir</button></li>`).join("")}</ul>` : `<p class="subtle">Todos los alumnos registrados ya están en este grupo.</p>`, dd => {
+          dd.querySelector("#ar-q")?.addEventListener("input", e => { const q = e.target.value.toLowerCase(); dd.querySelectorAll("#ar-list li").forEach(li => li.hidden = q && !li.dataset.n.includes(q)); });
+          dd.querySelectorAll("[data-add]").forEach(b => b.addEventListener("click", async () => { const { error } = await sb.rpc("add_student_to_group", { p_group: S.group.id, p_user: b.dataset.add }); if (error) { toast(error.message); return; } b.textContent = "Añadido ✓"; b.disabled = true; refreshAll(true); }));
+        });
+      });
       d.querySelector("#inv-copy").addEventListener("click", () => copy(link));
       d.querySelector("#pv-copy")?.addEventListener("click", () => copy(viewLink));
       d.querySelector("#pv").addEventListener("change", async e => { await sb.from("sessions").update({ public_view: e.target.checked }).eq("id", sessionId); d.querySelector("#pv-link").hidden = !e.target.checked; });
@@ -904,7 +913,7 @@
   }
   function materialsDialog() {
     const visible = S.materials.filter(m => m.visible);
-    openDialog("Material de hoy", visible.length ? `<ul class="mat-list">${visible.map(m => `<li>${matIcon(m)}<div class="nm"><b>${esc(m.title)}</b></div><div class="acts">${matOpenBtn(m)}</div></li>`).join("")}</ul><p class="meta" style="margin-top:14px"><button class="button secondary small" id="dlg-logout">Salir del campus</button></p>` : `<p class="subtle">${esc(teacherName())} aún no ha mostrado material.</p><p class="meta"><button class="button secondary small" id="dlg-logout">Salir del campus</button></p>`, d => { bindMaterials(d); d.querySelector("#dlg-logout")?.addEventListener("click", async () => { await sb.auth.signOut(); location.replace("index.html"); }); });
+    openDialog("Material de hoy", visible.length ? `<ul class="mat-list">${visible.map(m => `<li>${matIcon(m)}<div class="nm"><b>${esc(m.title)}</b></div><div class="acts">${matOpenBtn(m)}</div></li>`).join("")}</ul><p class="meta" style="margin-top:14px"><button class="button secondary small" id="dlg-logout">Salir del campus</button></p>` : `<p class="subtle">${esc(teacherName())} aún no ha mostrado material.</p><p class="meta"><button class="button secondary small" id="dlg-logout">Salir del campus</button></p>`, d => { bindMaterials(d); d.querySelector("#dlg-logout")?.addEventListener("click", async () => { await sb.auth.signOut(); location.replace("entrar.html"); }); });
   }
   function renderTools() {
     const t = $("c-tools"); t.hidden = !S.teacher; if (!S.teacher) return;

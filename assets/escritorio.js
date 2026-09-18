@@ -88,7 +88,7 @@
 
   function bind() {
     app.querySelector("#b-group").addEventListener("click", newGroupDialog);
-    app.querySelector("#b-session").addEventListener("click", () => newSessionDialog());
+    app.querySelector("#b-session").addEventListener("click", () => Shell.quickClassDialog(me));
     app.querySelector("#b-view").addEventListener("click", () => { S.view = S.view === "week" ? "month" : "week"; load(); });
     app.querySelectorAll("[data-nav]").forEach(b => b.addEventListener("click", () => { const n = Number(b.dataset.nav); if (n === 0) S.week = startOfWeek(new Date()); else if (S.view === "week") S.week = addDays(S.week, 7 * n); else S.week = startOfWeek(new Date(S.week.getFullYear(), S.week.getMonth() + n, 1)); load(); }));
     app.querySelectorAll("[data-assign]").forEach(b => b.addEventListener("click", () => assignDialog(S.groups.find(g => g.id === b.dataset.assign))));
@@ -126,7 +126,7 @@
         <button class="button secondary small" data-do="color">Color</button>
         <a class="button secondary small" href="panel.html?lista=1">Alumnos, invitar, recurrencia…</a>
       </div>`, d => {
-      d.querySelector('[data-do="session"]').addEventListener("click", () => { dialog.close(); newSessionDialog(g); });
+      d.querySelector('[data-do="session"]').addEventListener("click", () => { dialog.close(); Shell.quickClassDialog(me, g.id); });
       d.querySelector('[data-do="assign"]')?.addEventListener("click", () => { dialog.close(); assignDialog(g); });
       d.querySelector('[data-do="color"]').addEventListener("click", () => { dialog.close(); openDialog("Color de " + g.name, `<div style="display:flex;gap:8px;flex-wrap:wrap">${PALETTE.map(c => `<button class="bc" data-c="${c}" style="background:${c};width:34px;height:34px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px var(--line)"></button>`).join("")}</div>`, dd => dd.querySelectorAll("[data-c]").forEach(b => b.addEventListener("click", async () => { await sb.from("groups").update({ color: b.dataset.c }).eq("id", g.id); dialog.close(); load(); }))); });
     });
@@ -153,15 +153,18 @@
     await sb.from("memberships").upsert({ group_id: g.id, user_id: tid, role: "teacher" }, { onConflict: "group_id,user_id" });
     dialog.open && dialog.close(); toast(`${tname(tid).split(" ")[0]} asignado a ${g.name}`); load();
   }
-  function newGroupDialog() {
+  async function newGroupDialog() {
     const teachers = coord ? S.staffList : [{ id: me.user.id, full_name: me.profile.full_name }];
+    const { data: regs } = await sb.rpc("registered_students");
     openDialog("Nuevo grupo", `<div class="inline-form">
       <div class="field"><label for="g-name">Nombre</label><input id="g-name" placeholder="Nuevos creyentes · martes"></div>
       <div class="field"><label for="g-teacher">Maestro/a</label><select id="g-teacher"><option value="">Sin maestro por ahora</option>${teachers.map(t => `<option value="${t.id}" ${t.id === me.user.id ? "selected" : ""}>${esc(t.full_name)}</option>`).join("")}</select></div>
       <div class="row"><div class="field"><label for="g-sched">Horario</label><input id="g-sched" placeholder="Martes 20:00"></div><div class="field"><label for="g-video">Vídeo</label><select id="g-video"><option value="jitsi">Dentro del campus</option><option value="external">Meet/Zoom aparte</option></select></div></div>
       <div class="field" id="g-zoom-f" hidden><label for="g-zoom">Enlace de Meet/Zoom</label><input id="g-zoom" placeholder="https://meet.google.com/…"></div>
+      <div class="field"><label>Alumnos ya registrados (marca los que entran en este grupo)</label>${(regs || []).length ? `<input type="search" id="g-q" placeholder="Buscar…" style="margin-bottom:6px"><div id="g-students" style="max-height:180px;overflow:auto;display:grid;gap:4px">${regs.map(r => `<label class="g-st" data-n="${esc((r.full_name + " " + (r.email || "")).toLowerCase())}" style="display:flex;gap:8px;align-items:center;font-size:14px"><input type="checkbox" value="${r.id}"> ${esc(r.full_name)}<small class="meta">${r.groups?.length ? " · " + esc(r.groups.join(", ")) : ""}</small></label>`).join("")}</div>` : `<p class="meta">Aún no hay alumnos registrados; después podrás invitarlos con el código del grupo.</p>`}</div>
       <div class="field"><label for="g-desc">Descripción (opcional)</label><textarea id="g-desc" rows="2"></textarea></div>
       <p class="form-error" id="g-error"></p><button class="button" id="g-go">Crear grupo</button></div>`, d => {
+      d.querySelector("#g-q")?.addEventListener("input", e => { const q = e.target.value.toLowerCase(); d.querySelectorAll(".g-st").forEach(l => l.hidden = q && !l.dataset.n.includes(q)); });
       d.querySelector("#g-video").addEventListener("change", e => d.querySelector("#g-zoom-f").hidden = e.target.value !== "external");
       d.querySelector("#g-go").addEventListener("click", async () => {
         const name = d.querySelector("#g-name").value.trim(); if (!name) { d.querySelector("#g-error").textContent = "Ponle un nombre."; return; }
@@ -169,7 +172,9 @@
         const { data: g, error } = await sb.from("groups").insert({ name, teacher_id, schedule_text: d.querySelector("#g-sched").value.trim() || null, zoom_url: d.querySelector("#g-zoom").value.trim() || null, description: d.querySelector("#g-desc").value.trim() || null, video_provider: d.querySelector("#g-video").value, color: PALETTE[S.groups.length % PALETTE.length] }).select().single();
         if (error) { d.querySelector("#g-error").textContent = error.message; return; }
         if (teacher_id) await sb.from("memberships").insert({ group_id: g.id, user_id: teacher_id, role: "teacher" });
-        dialog.close(); toast("Grupo creado"); load();
+        const picked = [...d.querySelectorAll("#g-students input:checked")].map(i => i.value);
+        for (const uid of picked) await sb.rpc("add_student_to_group", { p_group: g.id, p_user: uid });
+        dialog.close(); toast("Grupo creado" + (picked.length ? ` con ${picked.length} alumnos` : "")); load();
       });
     });
   }

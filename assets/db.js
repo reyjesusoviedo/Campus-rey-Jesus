@@ -49,6 +49,13 @@
     await loadSettings();
     let me = await currentProfile();
     if (!me) { location.replace("entrar.html"); return new Promise(() => {}); }
+    let pendingClass = null; try { pendingClass = localStorage.getItem("pendingClass"); } catch {}
+    if (pendingClass && !me.user.is_anonymous && !/sesion\.html/.test(location.pathname)) {
+      try { localStorage.removeItem("pendingClass"); } catch {}
+      const { data: sid, error } = await sb.rpc("join_with_code_target", { p_code: pendingClass });
+      if (!error && sid) { location.replace("sesion.html?id=" + sid); return new Promise(() => {}); }
+      if (error) toast("Código de clase: " + error.message);
+    }
     let course = null; try { course = localStorage.getItem("pendingCourse"); } catch {}
     if (course && !me.user.is_anonymous) {
       try { localStorage.removeItem("pendingCourse"); } catch {}

@@ -129,7 +129,7 @@
         <div class="rcard" id="certificados"><h3>🏅 Certificados</h3>
           ${certs.length ? certs.map(e => `<div class="next"><span class="ic" style="width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:#faf0d6;flex:none">🏅</span><span style="flex:1"><b>${esc(e.course?.title || "")}</b><small>Terminado el ${fmtDate(e.completed_at, { day: "numeric", month: "long" })}</small></span><a class="button secondary small" href="certificado.html?e=${e.id}" target="_blank">Ver</a></div>`).join("") : `<p class="meta">Al terminar un curso, tu certificado aparecerá aquí.</p>`}</div>
       </div>
-      <div class="rcard" style="margin-top:14px"><h3>⚡ Accesos rápidos</h3><div class="quick" style="grid-template-columns:repeat(4,1fr)"><a href="#clases"><span class="ic">🗓</span>Ver calendario<span class="arr">›</span></a><button id="msg-soon"><span class="ic g">✉️</span>Mis mensajes <small class="meta">· próx.</small></button><button id="com-soon"><span class="ic">👥</span>Comunidad <small class="meta">· próx.</small></button><a href="#certificados"><span class="ic g">🏅</span>Mis certificados<span class="arr">›</span></a></div></div>`;
+      <div class="rcard" style="margin-top:14px"><h3>⚡ Accesos rápidos</h3><div class="quick four"><a href="#clases"><span class="ic">🗓</span>Ver calendario<span class="arr">›</span></a><button id="msg-soon"><span class="ic g">✉️</span>Mis mensajes <small class="meta">· próx.</small></button><button id="com-soon"><span class="ic">👥</span>Comunidad <small class="meta">· próx.</small></button><a href="#certificados"><span class="ic g">🏅</span>Mis certificados<span class="arr">›</span></a></div></div>`;
     document.getElementById("join-code").addEventListener("click", joinDialog);
     document.getElementById("msg-soon").addEventListener("click", () => toast("Mensajes: próximamente"));
     document.getElementById("com-soon").addEventListener("click", () => toast("Comunidad: próximamente"));
@@ -169,9 +169,9 @@
       <button class="button" id="code-go" style="width:100%">Entrar al grupo</button>`, d => {
       d.querySelector("#code-go").addEventListener("click", async () => {
         const code = d.querySelector("#code").value.trim().toUpperCase();
-        const { error } = await sb.rpc("join_with_code", { p_code: code });
+        const { data: sid, error } = await sb.rpc("join_with_code_target", { p_code: code });
         if (error) { d.querySelector("#code-error").textContent = "Código no válido o caducado."; return; }
-        dialog.close(); toast("Ya estás en el grupo"); load();
+        dialog.close(); if (sid) { toast("Entrando a la clase…"); location.href = "sesion.html?id=" + sid; return; } toast("Ya estás en el grupo"); load();
       });
     });
   }

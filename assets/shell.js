@@ -73,6 +73,31 @@
         Shell.alerts(me).then(al => { if (!al.length) { list.innerHTML = `<div class="meta">Sin avisos.</div>`; return; } n.textContent = al.length; n.hidden = false; list.innerHTML = al.map(a => `<a href="${esc(a.href)}">${a.icon} ${esc(a.text)}</a>`).join(""); });
       }
     },
+    async quickClassDialog(me, presetGroup) {
+      const { sb, esc, toast, fmtDate } = Campus;
+      const [g, l] = await Promise.all([sb.from("groups").select("id, name, teacher_id, memberships(user_id, role)").order("name"), sb.from("library_items").select("id, title, folder").order("folder").order("title")]);
+      const groups = (g.data || []).filter(x => me.profile.role === "coordinator" || x.teacher_id === me.user.id || x.memberships.some(m => m.user_id === me.user.id && m.role === "teacher"));
+      let d = document.getElementById("quick-dialog");
+      if (!d) { d = document.createElement("dialog"); d.id = "quick-dialog"; d.style.cssText = "border:0;border-radius:18px;padding:26px;width:min(520px,92vw)"; document.body.appendChild(d); d.addEventListener("click", e => { if (e.target === d) d.close(); }); }
+      const d0 = new Date(); d0.setSeconds(0, 0); const local = new Date(d0.getTime() - d0.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      d.innerHTML = `<div class="panel-head"><h2 style="margin:0">Empezar clase</h2><button class="icon-button" id="qc-x" aria-label="Cerrar">×</button></div>
+        <div class="inline-form" style="margin-top:12px">
+          ${groups.length ? `<div class="field"><label for="qc-g">Grupo</label><select id="qc-g">${groups.map(x => `<option value="${x.id}" ${presetGroup === x.id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></div>` : `<p class="notice">No tienes grupos. Crea uno primero desde Calendario → + Grupo.</p>`}
+          <div class="row"><div class="field"><label for="qc-t">Título (opcional)</label><input id="qc-t" placeholder="Clase del ${fmtDate(new Date(), { day: "numeric", month: "short" })}"></div><div class="field"><label for="qc-w">Cuándo</label><input id="qc-w" type="datetime-local" value="${local}"></div></div>
+          <div class="field"><label for="qc-m">Material para proyectar (opcional)</label><select id="qc-m"><option value="">Sin material por ahora</option>${(l.data || []).map(i => `<option value="${i.id}">${esc(i.folder)} · ${esc(i.title)}</option>`).join("")}</select></div>
+          <p class="form-error" id="qc-err"></p>
+          <div class="live-controls"><button class="button gold" id="qc-now" ${groups.length ? "" : "disabled"}>▶ Empezar ahora</button><button class="button secondary" id="qc-later" ${groups.length ? "" : "disabled"}>Programar</button></div></div>`;
+      d.showModal(); d.querySelector("#qc-x").addEventListener("click", () => d.close());
+      const go = async now => {
+        const gid = d.querySelector("#qc-g")?.value; if (!gid) return;
+        const when = d.querySelector("#qc-w").value; const title = d.querySelector("#qc-t").value.trim();
+        const { data: sid, error } = await sb.rpc("quick_session", { p_group: gid, p_title: title || null, p_starts: now ? new Date().toISOString() : new Date(when).toISOString(), p_start_now: now, p_library_item: d.querySelector("#qc-m").value || null });
+        if (error) { d.querySelector("#qc-err").textContent = error.message; return; }
+        d.close(); location.href = now ? "sesion.html?id=" + sid : "preparar.html?id=" + sid;
+      };
+      d.querySelector("#qc-now").addEventListener("click", () => go(true));
+      d.querySelector("#qc-later").addEventListener("click", () => go(false));
+    },
     profileDialog(me) {
       const { sb, esc } = Campus;
       let d = document.getElementById("profile-dialog");
@@ -81,7 +106,9 @@
         <div class="inline-form" style="margin-top:12px"><div style="display:flex;gap:12px;align-items:center">${avatarHtml(me, "big")}<div class="field" style="margin:0;flex:1"><label for="pd-photo">Foto</label><input id="pd-photo" type="file" accept="image/*"></div></div>
         <div class="field"><label for="pd-name">Nombre y apellido</label><input id="pd-name" value="${esc(me.profile.full_name)}"></div>
         <div class="field"><label for="pd-phone">Teléfono (WhatsApp)</label><input id="pd-phone" value="${esc(me.profile.phone || "")}"></div>
-        <p class="meta">${esc(me.user.email || "")}</p><button class="button" id="pd-save">Guardar</button></div>`;
+        <p class="meta">${esc(me.user.email || "")}</p>
+        <div class="field"><label for="pd-pw">Nueva contraseña (déjalo vacío para no cambiarla)</label><input id="pd-pw" type="password" autocomplete="new-password" placeholder="mínimo 6 caracteres"></div>
+        <button class="button" id="pd-save">Guardar</button></div>`;
       d.showModal();
       d.querySelector("#pd-x").addEventListener("click", () => d.close());
       d.querySelector("#pd-save").addEventListener("click", async () => {
@@ -90,6 +117,7 @@
         if (f) { const path = "avatars/" + me.user.id + "-" + Date.now() + "." + (f.name.split(".").pop() || "jpg"); const { error } = await sb.storage.from("public").upload(path, f, { upsert: true }); if (error) { Campus.toast("No se pudo subir la foto: " + error.message); return; } row.avatar_path = path; }
         const { error } = await sb.from("profiles").update(row).eq("id", me.user.id);
         if (error) { Campus.toast("No se pudo guardar: " + error.message); return; }
+        const pw = d.querySelector("#pd-pw").value; if (pw) { if (pw.length < 6) { Campus.toast("La contraseña debe tener al menos 6 caracteres"); return; } const r = await sb.auth.updateUser({ password: pw }); if (r.error) { Campus.toast("Contraseña: " + r.error.message); return; } }
         d.close(); location.reload();
       });
     },
