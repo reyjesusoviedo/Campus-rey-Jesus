@@ -39,12 +39,13 @@
   const closed = info && info.status === "closed";
   if (!info) { card.innerHTML = head + `<h1>Código no válido</h1><p class="sub">Puede que la clase haya terminado o que el código sea otro. Pídeselo a tu maestro.</p><a class="button secondary" href="entrar.html">Ir al campus</a>`; return; }
 
+  const MSG = { CODIGO_NO_VALIDO: "Este código ya no es válido. Pídele a tu maestro el enlace de hoy.", SIN_CLASE: "Todavía no hay ninguna clase abierta en este grupo. Vuelve cuando empiece.", CLASE_TERMINADA: "Esta clase ya ha terminado. Gracias por venir.", SIN_INVITADOS: "Esta clase no admite invitados. Pide a tu maestro que active la invitación." };
   const enter = async name => {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) { const { error } = await sb.auth.signInAnonymously({ options: { data: { full_name: name } } }); if (error) return { error: error.message.includes("Anonymous") ? "El acceso de invitados no está activado en el campus. Avisa a coordinación." : error.message }; }
-    const { data: { session: s2 } } = await sb.auth.getSession();
-    if (s2 && s2.user.is_anonymous) { const r = await sb.rpc("join_as_guest", { p_code: code, p_name: name }); return r.error ? { error: r.error.message } : { id: r.data }; }
-    const r = await sb.rpc("join_with_code_target", { p_code: code }); return r.error ? { error: r.error.message } : { id: r.data };
+    const r = await sb.rpc("join_class", { p_code: code, p_name: name });
+    if (r.error) { const k = Object.keys(MSG).find(x => r.error.message.includes(x)); return { error: k ? MSG[k] : r.error.message }; }
+    return { id: r.data.session_id };
   };
 
   // Si ya hay sesión en este móvil, entrar directamente
