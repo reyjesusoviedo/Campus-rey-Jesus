@@ -11,7 +11,7 @@
   const PALETTE = ["#0f766e", "#2563eb", "#b45309", "#7c3aed", "#be185d", "#0e7490", "#4d7c0f", "#9f1239"];
   const gcolor = g => g.color || PALETTE[Math.abs([...g.id].reduce((h, c) => h * 31 + c.charCodeAt(0), 7)) % PALETTE.length];
   const ROLE = { teacher: "Maestro/a", coordinator: "Coordinación" };
-  const S = { staff: [], groups: [], invites: [], last: {}, tab: new URLSearchParams(location.search).get("tab") || "staff", students: null, q: "" };
+  const S = { staff: [], groups: [], invites: [], last: {}, tab: new URLSearchParams(location.search).get("tab") || "staff", students: null, q: "", showOff: false };
   const baseUrl = () => location.href.replace(/[^/]*$/, "");
   const inviteLink = t => baseUrl() + "entrar.html?equipo=" + t;
 
@@ -31,7 +31,7 @@
     const active = S.staff.filter(x => x.active), pending = S.invites.filter(x => !x.accepted_at && new Date(x.expires_at) > Date.now());
     const students = new Set(S.groups.flatMap(g => g.memberships.filter(m => m.role !== "teacher").map(m => m.user_id))).size;
     app.innerHTML = `
-      <div class="eq-hello"><div><h1>Quién da clase, con qué rol y en qué grupos</h1><p>Gestiona el equipo de maestros y colaboradores del campus.</p></div><button class="button teal" id="b-invite">＋ Nuevo miembro</button></div>
+      <div class="eq-hello"><div><h1>Quién da clase, con qué rol y en qué grupos</h1><p>Gestiona el equipo de maestros y colaboradores del campus.</p></div><button class="button teal" id="b-invite">＋ Dar de alta</button></div>
       <div class="stats"><div class="stat"><span class="sic">🎓</span><span><b>${active.filter(x => x.role === "teacher").length}</b><span>maestros activos</span></span></div><div class="stat"><span class="sic gold">👥</span><span><b>${active.filter(x => x.role === "coordinator").length}</b><span>coordinación</span></span></div><div class="stat"><span class="sic">👥</span><span><b>${S.groups.length}</b><span>grupos</span></span></div><div class="stat"><span class="sic green">👥</span><span><b>${students}</b><span>alumnos</span></span></div></div>
       <div class="eq-tabs"><button data-tab="staff" aria-pressed="${S.tab === "staff"}">Equipo (${S.staff.length})</button><button data-tab="students" aria-pressed="${S.tab === "students"}">Alumnos (${students})</button><button data-tab="courses" aria-pressed="${S.tab === "courses"}">Cursos libres</button></div>
       <div class="eq-card" id="body"></div>`;
@@ -42,7 +42,9 @@
 
   function renderStaff() {
     const body = app.querySelector("#body");
-    const rows = S.staff.map(p => {
+    const off = S.staff.filter(p => !p.active).length;
+    const list = S.showOff ? S.staff : S.staff.filter(p => p.active);
+    const rows = list.map(p => {
       const gs = S.groups.filter(g => g.teacher_id === p.id);
       const state = !p.active ? `<span class="stt off">Desactivado</span>` : gs.length || p.role === "coordinator" ? `<span class="stt on">Activo</span>` : `<span class="stt nogroup">Sin grupo</span>`;
       return `<tr class="${p.active ? "" : "inactive"}"><td><div class="who"><span class="avatar teal">${esc(initials(p.full_name))}</span><span><b>${esc(p.full_name)}${p.id === me.user.id ? " (tú)" : ""}</b><small>${esc(p.email || "")}</small></span></div></td>
@@ -51,11 +53,13 @@
         <td>${S.last[p.id] ? fmtDate(S.last[p.id], { day: "numeric", month: "short" }) : "—"}</td><td>${state}</td>
         <td><div class="acts">${p.active ? `<button data-groups="${p.id}">👥 Grupos</button>${p.id !== me.user.id ? `<button data-role="${p.id}">✏️ Rol</button><button data-pw="${p.id}">🔑 Contraseña</button><button class="danger" data-off="${p.id}">🗑 Desactivar</button>` : ""}` : `<button data-on="${p.id}">Reactivar</button>`}</div></td></tr>`;
     });
-    body.innerHTML = `<table><tr><th>Persona</th><th>Rol</th><th>Grupos</th><th>Última clase</th><th>Estado</th><th></th></tr>${rows.join("")}</table>`;
+    body.innerHTML = `${off ? `<div style="padding:10px 14px 0"><label style="font-size:14px;display:inline-flex;gap:8px;align-items:center"><input type="checkbox" id="show-off" ${S.showOff ? "checked" : ""}> Mostrar desactivados (${off})</label></div>` : ""}
+      <table><tr><th>Persona</th><th>Rol</th><th>Grupos</th><th>Última clase</th><th>Estado</th><th></th></tr>${rows.join("") || `<tr><td colspan="6" class="meta">Sin personas en esta lista.</td></tr>`}</table>`;
+    body.querySelector("#show-off")?.addEventListener("change", e => { S.showOff = e.target.checked; renderStaff(); });
     body.querySelectorAll("[data-groups]").forEach(b => b.addEventListener("click", () => groupsDialog(S.staff.find(p => p.id === b.dataset.groups))));
     body.querySelectorAll("[data-role]").forEach(b => b.addEventListener("click", () => roleDialog(S.staff.find(p => p.id === b.dataset.role))));
     body.querySelectorAll("[data-pw]").forEach(b => b.addEventListener("click", () => passwordDialog(S.staff.find(p => p.id === b.dataset.pw))));
-    body.querySelectorAll("[data-off]").forEach(b => b.addEventListener("click", async () => { const p = S.staff.find(x => x.id === b.dataset.off); if (!confirm(`¿Desactivar a ${p.full_name}? Dejará de poder entrar como ${ROLE[p.role].toLowerCase()}; su historial se conserva.`)) return; const { error } = await sb.from("profiles").update({ active: false }).eq("id", p.id); if (error) toast(error.message); else toast("Desactivado"); load(); }));
+    body.querySelectorAll("[data-off]").forEach(b => b.addEventListener("click", async () => { const p = S.staff.find(x => x.id === b.dataset.off); if (!confirm(`¿Desactivar a ${p.full_name}? No se borra: deja de poder entrar y su historial se conserva. Lo verás marcando «Mostrar desactivados».`)) return; const { error } = await sb.from("profiles").update({ active: false }).eq("id", p.id); if (error) toast(error.message); else { toast("Desactivado · márcalo en «Mostrar desactivados» para reactivarlo"); S.showOff = true; } load(); }));
     body.querySelectorAll("[data-on]").forEach(b => b.addEventListener("click", async () => { await sb.from("profiles").update({ active: true }).eq("id", b.dataset.on); toast("Reactivado"); load(); }));
   }
 
@@ -87,9 +91,9 @@
   function accessText(name, email, pw) { return `Hola${name ? " " + name.split(" ")[0] : ""}, ya tienes acceso al campus ${Campus.cfg.brand}.\nEntra en: ${baseUrl()}entrar.html (pestaña «Contraseña»)\nCorreo: ${email}\nContraseña: ${pw}\nPuedes cambiarla en «Mi perfil» cuando quieras.`; }
   function newMemberDialog() {
     dialog.classList.add("side-panel"); dialog.addEventListener("close", () => dialog.classList.remove("side-panel"), { once: true });
-    openDialog("Nuevo miembro del equipo", `<p class="subtle" style="margin-top:0">Se crea el usuario al momento, con su contraseña inicial. Se la pasas por WhatsApp y podrá cambiarla en «Mi perfil».</p><div class="inline-form">
+    openDialog("Dar de alta a alguien", `<p class="subtle" style="margin-top:0">Alumno, maestro o coordinación: se crea el usuario al momento con su contraseña inicial. Se la pasas por WhatsApp y podrá cambiarla en «Mi perfil».</p><div class="inline-form">
       <div class="row"><div class="field"><label for="n-name">Nombre y apellido</label><input id="n-name"></div><div class="field"><label for="n-email">Correo</label><input id="n-email" type="email"></div></div>
-      <div class="row"><div class="field"><label for="n-phone">Teléfono (WhatsApp)</label><input id="n-phone" placeholder="+34 …"></div><div class="field"><label for="n-role">Rol</label><select id="n-role"><option value="teacher">Maestro/a</option><option value="coordinator">Coordinación</option></select></div></div>
+      <div class="row"><div class="field"><label for="n-phone">Teléfono (WhatsApp)</label><input id="n-phone" placeholder="+34 …"></div><div class="field"><label for="n-role">Rol</label><select id="n-role"><option value="student">Alumno/a</option><option value="teacher" selected>Maestro/a</option><option value="coordinator">Coordinación</option></select></div></div>
       <div class="field"><label for="n-group">Grupo (opcional)</label><select id="n-group"><option value="">Sin grupo por ahora</option>${S.groups.map(g => `<option value="${g.id}">${esc(g.name)}${g.teacher_id ? "" : " · sin maestro"}</option>`).join("")}</select></div>
       <div class="field"><label for="n-pw">Contraseña inicial</label><div style="display:flex;gap:6px"><input id="n-pw" value="${genPw()}" style="flex:1"><button class="button secondary small" id="n-gen" type="button">Generar</button></div></div>
       <p class="form-error" id="n-err"></p>
@@ -100,10 +104,12 @@
         const err = d.querySelector("#n-err"); const email = d.querySelector("#n-email").value.trim().toLowerCase(), name = d.querySelector("#n-name").value.trim(), pw = d.querySelector("#n-pw").value;
         if (!name) { err.textContent = "Escribe el nombre."; return; } if (!email.includes("@")) { err.textContent = "Escribe un correo válido."; return; } if (pw.length < 6) { err.textContent = "Contraseña de al menos 6 caracteres."; return; }
         d.querySelector("#n-go").disabled = true;
-        const { error } = await sb.rpc("create_staff_user", { p_email: email, p_password: pw, p_name: name, p_role: d.querySelector("#n-role").value, p_phone: d.querySelector("#n-phone").value.trim() || null, p_group: d.querySelector("#n-group").value || null });
+        const role = d.querySelector("#n-role").value;
+        const { data: newId, error } = await sb.rpc("create_staff_user", { p_email: email, p_password: pw, p_name: name, p_role: role, p_phone: d.querySelector("#n-phone").value.trim() || null, p_group: d.querySelector("#n-group").value || null });
         d.querySelector("#n-go").disabled = false;
         if (error) { err.textContent = error.message; return; }
-        dialog.close(); await load();
+        if (newId) { const r = await sb.from("profiles").update({ role, active: true, full_name: name }).eq("id", newId); if (r.error) toast("Aviso: no se pudo fijar el rol: " + r.error.message); }
+        dialog.close(); S.students = null; if (role === "student") S.tab = "students"; await load();
         openDialog("Acceso creado", `<p class="subtle" style="margin-top:0">Pásale estos datos. Podrá cambiar la contraseña en «Mi perfil».</p><div class="link-box">${esc(accessText(name, email, pw)).replace(/\n/g, "<br>")}</div><div class="live-controls"><button class="button secondary small" id="a-copy">Copiar datos</button><a class="button small" target="_blank" rel="noopener" href="${whatsappMessage(accessText(name, email, pw))}">Enviar por WhatsApp</a></div>`, dd => dd.querySelector("#a-copy").addEventListener("click", () => copy(accessText(name, email, pw))));
       });
     });
@@ -173,4 +179,5 @@
 
   await load();
   document.getElementById("loading").hidden = true; app.hidden = false;
+  if (new URLSearchParams(location.search).get("nuevo")) newMemberDialog();
 })();
