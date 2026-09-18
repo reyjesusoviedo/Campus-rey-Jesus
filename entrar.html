@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Entrar · Campus Rey Jesús Oviedo</title>
-<link rel="stylesheet" href="assets/styles.css">
-<link rel="stylesheet" href="assets/piloto.css">
+<link rel="stylesheet" href="assets/styles.css?v=1.0.202609182142">
+<link rel="stylesheet" href="assets/piloto.css?v=1.0.202609182142">
 </head>
 <body class="auth-page">
 <main class="auth-card">
@@ -31,8 +31,8 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="assets/config.js"></script>
-<script src="assets/db.js"></script>
+<script src="assets/config.js?v=1.0.202609182142"></script>
+<script src="assets/db.js?v=1.0.202609182142"></script>
 <script>
 (async () => {
   const { sb, cfg, esc, toast } = Campus;
@@ -157,5 +157,7 @@
   }
 })();
 </script>
+<p id="campus-ver" style="position:fixed;bottom:6px;left:0;right:0;text-align:center;font:11px Inter,sans-serif;color:rgba(255,255,255,.55);margin:0"></p>
+<script>document.getElementById("campus-ver").textContent="v"+(window.CAMPUS_CONFIG&&window.CAMPUS_CONFIG.version||"?");</script>
 </body>
 </html>

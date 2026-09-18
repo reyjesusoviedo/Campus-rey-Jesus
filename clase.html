@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Entrar a la clase</title>
-<link rel="stylesheet" href="assets/styles.css">
-<link rel="stylesheet" href="assets/piloto.css">
+<link rel="stylesheet" href="assets/styles.css?v=1.0.202609182142">
+<link rel="stylesheet" href="assets/piloto.css?v=1.0.202609182142">
 <style>
   body.join { min-height: 100vh; display: grid; place-items: center; padding: 20px; background: linear-gradient(160deg, #0b2f6b, #0a4f85 60%, #1263b8); margin: 0; }
   .join-card { width: min(460px, 100%); background: #fff; border-radius: 22px; padding: 28px; box-shadow: 0 24px 60px rgba(0,0,0,.3); text-align: center; }
@@ -23,8 +23,8 @@
 <body class="join">
 <main class="join-card" id="card"><p class="meta">Abriendo la clase…</p></main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="assets/config.js"></script>
-<script src="assets/db.js"></script>
+<script src="assets/config.js?v=1.0.202609182142"></script>
+<script src="assets/db.js?v=1.0.202609182142"></script>
 <script>
 (async () => {
   const { sb, esc, cfg, fmtDate, loadSettings, brandMark, qs } = Campus;
@@ -82,5 +82,7 @@
   nm.focus();
 })();
 </script>
+<p id="campus-ver" style="position:fixed;bottom:6px;left:0;right:0;text-align:center;font:11px Inter,sans-serif;color:rgba(255,255,255,.55);margin:0"></p>
+<script>document.getElementById("campus-ver").textContent="v"+(window.CAMPUS_CONFIG&&window.CAMPUS_CONFIG.version||"?");</script>
 </body>
 </html>
