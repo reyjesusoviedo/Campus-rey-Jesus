@@ -11,24 +11,23 @@
 <main class="auth-card">
   <div class="brand" data-brand></div>
   <h1>Entrar al campus</h1>
-  <p class="subtle" style="margin:0">Acceso solo con invitación de tu maestro o maestra.</p>
+  <p class="subtle" style="margin:0">Invitado: entra con tu código. Registrado: con tu correo y contraseña.</p>
 
   <div class="auth-switch" role="group" aria-label="Forma de entrar">
-    <button type="button" data-mode="guest" aria-pressed="false">Invitado</button>
-    <button type="button" data-mode="signup" aria-pressed="true">Primera vez</button>
-    <button type="button" data-mode="magic" aria-pressed="false">Ya tengo cuenta</button>
-    <button type="button" data-mode="password" aria-pressed="false">Contraseña</button>
+    <button type="button" data-mode="guest" aria-pressed="false">Tengo un código</button>
+    <button type="button" data-mode="password" aria-pressed="true">Correo y contraseña</button>
+    <button type="button" data-mode="signup" aria-pressed="false" hidden>Apuntarme</button>
   </div>
 
   <div class="field" id="name-field"><label for="name">Tu nombre y apellido</label><input id="name" autocomplete="name"></div>
   <div class="field" id="phone-field" hidden><label for="phone">Teléfono (WhatsApp)</label><input id="phone" type="tel" autocomplete="tel" placeholder="+34 …"></div>
   <div class="field" id="code-field" hidden><label for="class-code">Código de la clase o del grupo</label><input id="class-code" maxlength="6" autocomplete="off" style="text-transform:uppercase;letter-spacing:.2em;text-align:center;font-size:1.3rem"></div>
   <div class="field" id="email-field"><label for="email">Correo</label><input id="email" type="email" autocomplete="email" required></div>
-  <div class="field" id="pass-field" hidden><label for="password">Contraseña</label><input id="password" type="password" autocomplete="current-password"></div>
+  <div class="field" id="pass-field"><label for="password">Contraseña</label><input id="password" type="password" autocomplete="current-password"></div>
   <p class="form-error" id="error" role="alert"></p>
-  <button class="button" id="go" style="width:100%">Crear mi acceso</button>
+  <button class="button" id="go" style="width:100%">Entrar</button>
   <p class="meta" id="forgot" hidden style="margin-top:10px;text-align:center"><a href="#" id="forgot-link">¿Olvidaste la contraseña?</a></p>
-  <p class="meta" id="hint" style="margin-top:14px">Recibirás un enlace en tu correo para entrar, sin contraseña. Después, dentro, escribe el <strong>código del grupo</strong> que te ha dado tu maestro.</p>
+  <p class="meta" id="hint" style="margin-top:14px">Si te han dado de alta en el campus, entra con tu correo y la contraseña que te pasaron. Puedes cambiarla luego en «Mi perfil».</p>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -46,15 +45,16 @@
   const { data: { session } } = await sb.auth.getSession();
   if (session && !wantsGuest && !hasInvite) { location.replace("panel.html"); return; }
 
-  let mode = "signup";
+  let mode = "password";
   const err = document.getElementById("error");
   const courseSlug = new URLSearchParams(location.search).get("curso");
   if (courseSlug) {
     try { localStorage.setItem("pendingCourse", courseSlug); } catch {}
     const { data: c } = await sb.from("courses").select("title, type").eq("slug", courseSlug).maybeSingle();
     document.getElementById("phone-field").hidden = false;
+    document.querySelector('[data-mode="signup"]').hidden = false; document.querySelector('[data-mode="signup"]').textContent = "Apuntarme";
     document.querySelector(".auth-card h1").textContent = c ? "Apúntate a «" + c.title + "»" : "Apúntate";
-    document.getElementById("hint").textContent = "Gratuito. Recibirás un enlace en tu correo; al abrirlo ya estarás en tu curso.";
+    setTimeout(() => document.querySelector('[data-mode="signup"]').click(), 0);
     const { data: { session: cur } } = await sb.auth.getSession(); if (cur && !cur.user.is_anonymous) { location.replace("panel.html"); return; }
   }
   const inviteToken = new URLSearchParams(location.search).get("equipo");
@@ -81,8 +81,9 @@
     document.getElementById("name-field").hidden = !(mode === "signup" || mode === "guest");
     document.getElementById("code-field").hidden = mode !== "guest";
     document.getElementById("email-field").hidden = mode === "guest";
-    document.getElementById("go").textContent = mode === "password" ? "Entrar" : mode === "signup" ? "Crear mi acceso" : mode === "guest" ? "Entrar a la clase" : "Enviarme el enlace";
-    document.getElementById("hint").textContent = mode === "guest" ? "Sin correo ni contraseña: escribe tu nombre y el código que te ha dado tu maestro (de la clase o del grupo). Tu acceso se guarda en este dispositivo." : mode === "signup" ? "Recibirás un enlace en tu correo para entrar, sin contraseña. Después, dentro, escribe el código del grupo que te ha dado tu maestro." : mode === "magic" ? "Te enviaremos un enlace al correo con el que te diste de alta." : "Acceso con contraseña para maestros y coordinación.";
+    document.getElementById("go").textContent = mode === "password" ? "Entrar" : mode === "signup" ? "Apuntarme" : mode === "guest" ? "Entrar a la clase" : "Enviarme el enlace";
+    document.getElementById("pass-field").hidden = !(mode === "password" || mode === "signup");
+    document.getElementById("hint").textContent = mode === "guest" ? "Sin correo ni contraseña: escribe tu nombre y el código que te ha dado tu maestro (de la clase o del grupo). Tu acceso se guarda en este dispositivo." : mode === "signup" ? "Gratuito. Elige una contraseña y entrarás directamente a tu curso." : "Si te han dado de alta en el campus, entra con tu correo y la contraseña que te pasaron. Puedes cambiarla luego en «Mi perfil».";
     err.textContent = "";
   }));
 
@@ -108,6 +109,16 @@
     if (!email) { err.textContent = "Escribe tu correo."; return; }
     btn.disabled = true;
     try {
+      if (mode === "signup") {
+        const name = document.getElementById("name").value.trim(), phone = document.getElementById("phone").value.trim();
+        if (!name) { err.textContent = "Escribe tu nombre."; return; } if (!document.getElementById("phone-field").hidden && !phone) { err.textContent = "Escribe tu teléfono."; return; } if (password.length < 6) { err.textContent = "Elige una contraseña de al menos 6 caracteres."; return; }
+        try { if (phone) localStorage.setItem("pendingPhone", phone); } catch {}
+        const { data, error } = await sb.auth.signUp({ email, password, options: { data: { full_name: name, phone: phone || undefined }, emailRedirectTo: location.href.replace(/[^/]*$/, "entrar.html") + (courseSlug ? "?curso=" + encodeURIComponent(courseSlug) : "") } });
+        if (error) { err.textContent = error.message.includes("already") ? "Ese correo ya está registrado: entra con tu contraseña." : error.message; return; }
+        if (data.session) { location.replace("panel.html"); return; }
+        toast("Revisa tu correo para confirmar la cuenta."); document.getElementById("hint").textContent = "Te hemos enviado un correo a " + email + " para confirmar tu cuenta. Ábrelo y entra con tu contraseña.";
+        return;
+      }
       if (mode === "password") {
         if (!password) { err.textContent = "Escribe tu contraseña."; return; }
         const { error } = await sb.auth.signInWithPassword({ email, password });
@@ -126,6 +137,7 @@
     } finally { btn.disabled = false; }
   });
   document.getElementById("password").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("go").click(); });
+  if (!preCode && !courseSlug) document.querySelector('[data-mode="password"]').click();
   document.getElementById("forgot-link").addEventListener("click", async e => {
     e.preventDefault(); const email = document.getElementById("email").value.trim(); if (!email) { err.textContent = "Escribe tu correo y vuelve a pulsar."; return; }
     const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.href.replace(/[^/]*$/, "entrar.html") + "?recuperar=1" });
