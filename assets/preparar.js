@@ -122,7 +122,7 @@
       d.querySelector("#u-file").addEventListener("change", e => { const f = e.target.files[0]; if (f && !d.querySelector("#u-title").value) d.querySelector("#u-title").value = f.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " "); });
       d.querySelector("#u-save").addEventListener("click", async () => {
         const err = d.querySelector("#u-err"); err.textContent = ""; const title = d.querySelector("#u-title").value.trim(); if (!title) { err.textContent = "Ponle un título."; return; }
-        const row = { owner_id: me.user.id, title, kind: k.value, folder: d.querySelector("#u-folder").value.trim() || "General" };
+        const row = { owner_id: me.user.id, title, kind: k.value, folder: d.querySelector("#u-folder").value.trim() || "General", purpose: "group", group_id: S.group.id, visibility: "staff" };
         if (k.value === "link") row.url = d.querySelector("#u-url").value.trim();
         if (k.value === "text") row.content = d.querySelector("#u-text").value.trim();
         d.querySelector("#u-save").disabled = true;

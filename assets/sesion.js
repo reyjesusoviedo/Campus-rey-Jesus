@@ -851,7 +851,7 @@
     const b = $("c-bottom");
     b.querySelector("[data-edit-obj]").addEventListener("click", objectivesDialog);
     semaWidget();
-    b.querySelector("[data-add-mat]").addEventListener("click", addMaterialDialog);
+    b.querySelector("[data-add-mat]").addEventListener("click", () => addMaterialDialog());
     b.querySelectorAll("[data-obj]").forEach(li => li.addEventListener("click", () => toggleObjective(Number(li.dataset.obj))));
     b.querySelectorAll("[data-mat-menu]").forEach(x => x.addEventListener("click", () => materialMenuDialog(S.materials.find(m => m.id === x.dataset.matMenu))));
     bindMaterials(b);
@@ -865,38 +865,49 @@
     });
   }
   async function libraryPickDialog() {
-    const { data, error } = await sb.from("library_items").select("*").order("updated_at", { ascending: false });
+    let { data, error } = await sb.rpc("library_list");
+    if (error) { const f = await sb.from("library_items").select("*").order("updated_at", { ascending: false }); data = f.data; error = f.error; }
     if (error) { toast("La biblioteca no está disponible: " + error.message); return; }
     const items = data || []; let q = "";
-    const render = d => { const t = q.toLowerCase(); const list = items.filter(i => !t || (i.title + " " + i.folder + " " + i.tags.join(" ")).toLowerCase().includes(t)); d.querySelector("#lp-list").innerHTML = list.length ? list.map(i => `<li><b>${esc(i.title)}</b><small>${esc(i.folder)}</small><button class="button teal small" data-pick="${i.id}">Añadir</button></li>`).join("") : `<li><span class="meta">Nada encontrado.</span></li>`;
+    const render = d => { const t = q.toLowerCase(); const list = items.filter(i => !t || (i.title + " " + i.folder + " " + (i.tags || []).join(" ") + " " + (i.owner_name || "")).toLowerCase().includes(t)); d.querySelector("#lp-list").innerHTML = list.length ? list.map(i => `<li><b>${esc(i.title)}</b><small>${esc(i.group_name || i.course_title || i.folder)}${i.owner_name ? " · " + esc(i.owner_name.split(" ")[0]) : ""}</small><button class="button teal small" data-pick="${i.id}">Añadir</button></li>`).join("") : `<li><span class="meta">Nada encontrado.</span></li>`;
       d.querySelectorAll("[data-pick]").forEach(b => b.addEventListener("click", async () => { const i = items.find(x => x.id === b.dataset.pick); const { error } = await sb.from("materials").insert({ session_id: sessionId, title: i.title, kind: i.kind, storage_path: i.storage_path, url: i.url, content: i.content, bucket: i.kind === "file" ? "library" : "materials", library_item_id: i.id, visible: true, position: S.materials.length }); if (error) { toast("No se pudo añadir: " + error.message); return; } toast("Añadido desde la biblioteca"); refreshAll(true); })); };
     openDialog("De la biblioteca", `<div class="inline-form"><input type="search" id="lp-q" placeholder="Buscar…"><ul class="sess-pick" id="lp-list"></ul><p class="meta"><a href="biblioteca.html" target="_blank">Abrir la biblioteca completa</a> · <button class="button secondary small" id="lp-new">Subir uno nuevo a esta clase</button></p></div>`, d => { render(d); d.querySelector("#lp-q").addEventListener("input", e => { q = e.target.value; render(d); }); d.querySelector("#lp-new").addEventListener("click", () => { dialog.close(); addMaterialDialog(true); }); });
   }
   function addMaterialDialog(direct) {
     if (!direct) { libraryPickDialog(); return; }
+    const TYPES = [["leccion", "Lección interactiva"], ["lectura", "Lectura o texto"], ["presentacion", "Presentación"], ["video", "Vídeo"], ["audio", "Audio"], ["guia", "Guía o PDF"], ["imagen", "Imagen"], ["otro", "Otro"]];
     openDialog("Subir material a esta clase", `<div class="inline-form">
-      <div class="field"><label for="m-title">Título</label><input id="m-title"></div>
-      <div class="field"><label for="m-kind">Tipo</label><select id="m-kind"><option value="file">Archivo (lección HTML, PDF, imagen…)</option><option value="link">Enlace</option><option value="text">Texto</option></select></div>
+      <div class="field"><label for="m-kind">¿Qué vas a subir?</label><select id="m-kind"><option value="file">Un archivo (lección, PDF, imagen, audio…)</option><option value="link">Un enlace</option><option value="text">Un texto</option></select></div>
       <div class="field" id="m-file-f"><label for="m-file">Archivo</label><input id="m-file" type="file"></div>
       <div class="field" id="m-url-f" hidden><label for="m-url">Enlace</label><input id="m-url" placeholder="https://…"></div>
       <div class="field" id="m-text-f" hidden><label for="m-text">Texto</label><textarea id="m-text" rows="5"></textarea></div>
+      <div class="field"><label for="m-title">Título</label><input id="m-title"></div>
+      <div class="field"><label for="m-desc">¿De qué trata? (opcional)</label><input id="m-desc"></div>
+      <div class="field"><label for="m-type">Tipo</label><select id="m-type">${TYPES.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></div>
+      <p class="meta">Se guardará a tu nombre (<b>${esc(me.profile.full_name)}</b>) y para el grupo <b>${esc(S.group.name)}</b>.</p>
       <label style="font-size:14px"><input type="checkbox" id="m-visible" checked> Visible para los alumnos</label>
-      <label style="font-size:14px"><input type="checkbox" id="m-lib" checked> Guardar también en la biblioteca</label>
+      <label style="font-size:14px"><input type="checkbox" id="m-lib" checked> Guardar también en la biblioteca del campus</label>
       <button class="button" id="m-save" style="margin-top:8px">Guardar material</button></div>`, d => {
-      const mk = d.querySelector("#m-kind"); const u = () => { d.querySelector("#m-url-f").hidden = mk.value !== "link"; d.querySelector("#m-text-f").hidden = mk.value !== "text"; d.querySelector("#m-file-f").hidden = mk.value !== "file"; }; mk.addEventListener("change", u); u();
-      d.querySelector("#m-file").addEventListener("change", e => { const f = e.target.files[0]; if (f && !d.querySelector("#m-title").value) d.querySelector("#m-title").value = f.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " "); });
+      const mk = d.querySelector("#m-kind"); const u = () => { d.querySelector("#m-url-f").hidden = mk.value !== "link"; d.querySelector("#m-text-f").hidden = mk.value !== "text"; d.querySelector("#m-file-f").hidden = mk.value !== "file"; d.querySelector("#m-type").value = mk.value === "text" ? "lectura" : mk.value === "link" ? "video" : "otro"; }; mk.addEventListener("change", u); u();
+      d.querySelector("#m-file").addEventListener("change", e => { const f = e.target.files[0]; if (!f) return; if (!d.querySelector("#m-title").value) d.querySelector("#m-title").value = f.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ");
+        const n = f.name.toLowerCase(); d.querySelector("#m-type").value = /\.html?$/.test(n) ? "leccion" : /\.pdf$/.test(n) ? "guia" : /\.(pptx?|key|odp)$/.test(n) ? "presentacion" : /\.(mp4|mov|webm)$/.test(n) ? "video" : /\.(mp3|m4a|wav|ogg)$/.test(n) ? "audio" : /\.(png|jpe?g|gif|webp)$/.test(n) ? "imagen" : "otro"; });
       d.querySelector("#m-save").addEventListener("click", async () => {
         const title = d.querySelector("#m-title").value.trim(); if (!title) { toast("Ponle un título"); return; }
         const row = { session_id: sessionId, title, kind: mk.value, visible: d.querySelector("#m-visible").checked, position: S.materials.length };
         if (mk.value === "link") row.url = d.querySelector("#m-url").value.trim();
         if (mk.value === "text") row.content = d.querySelector("#m-text").value.trim();
         const toLib = d.querySelector("#m-lib").checked;
-        if (mk.value === "file") { const f = d.querySelector("#m-file").files[0]; if (!f) { toast("Elige un archivo"); return; } d.querySelector("#m-save").disabled = true;
-          const bucket = toLib ? "library" : "materials", path = toLib ? `${me.user.id}/${Date.now()}-${f.name.replace(/[^\w.\-]/g, "_")}` : `${S.group.id}/${Date.now()}-${f.name.replace(/[^\w.\-]/g, "_")}`;
-          const { error } = await sb.storage.from(bucket).upload(path, f); if (error) { toast("No se pudo subir: " + error.message); d.querySelector("#m-save").disabled = false; return; } row.storage_path = path; row.bucket = bucket; row.size = f.size; }
-        if (toLib) { const li = { owner_id: me.user.id, title, kind: mk.value, storage_path: row.storage_path, url: row.url, content: row.content, folder: S.group.name, size_bytes: row.size || null }; delete row.size; const r = await sb.from("library_items").insert(li).select("id").single(); if (!r.error) row.library_item_id = r.data.id; else if (!/library_items/.test(r.error.message)) toast("No se guardó en la biblioteca: " + r.error.message); }
-        delete row.size;
-        const { error } = await sb.from("materials").insert(row); if (error) { toast(error.message); return; } dialog.close(); toast("Material guardado"); refreshAll(true);
+        d.querySelector("#m-save").disabled = true;
+        try {
+          let size = null;
+          if (mk.value === "file") { const f = d.querySelector("#m-file").files[0]; if (!f) { toast("Elige un archivo"); return; }
+            const bucket = toLib ? "library" : "materials", path = toLib ? `${me.user.id}/${Date.now()}-${f.name.replace(/[^\w.\-]/g, "_")}` : `${S.group.id}/${Date.now()}-${f.name.replace(/[^\w.\-]/g, "_")}`;
+            const { error } = await sb.storage.from(bucket).upload(path, f); if (error) { toast("No se pudo subir: " + error.message); return; } row.storage_path = path; row.bucket = bucket; size = f.size; }
+          if (toLib) { const li = { owner_id: me.user.id, title, kind: mk.value, storage_path: row.storage_path, url: row.url, content: row.content, folder: S.group.name, size_bytes: size, description: d.querySelector("#m-desc").value.trim() || null, material_type: d.querySelector("#m-type").value, purpose: "group", group_id: S.group.id, visibility: "staff" };
+            const r = await sb.from("library_items").insert(li).select("id").single(); if (!r.error) row.library_item_id = r.data.id; else if (!/library_items|column/.test(r.error.message)) toast("No se guardó en la biblioteca: " + r.error.message); }
+          const { error } = await sb.from("materials").insert(row); if (error) { toast(error.message); return; }
+          dialog.close(); toast("Material guardado"); refreshAll(true);
+        } finally { d.querySelector("#m-save").disabled = false; }
       });
     });
   }
