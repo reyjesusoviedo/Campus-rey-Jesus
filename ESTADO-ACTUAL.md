@@ -50,3 +50,11 @@ maestro → clase → invitación → móvil invitado.
 ## Normas de trabajo
 Ver `CLAUDE.md`. Lo esencial: ejecutar `./release.sh` antes de publicar,
 no usar librerías externas, y que ninguna pantalla se quede cargando sin mensaje.
+
+## Corrección adicional · arranque de maestros/coordinación
+Se detectó que el vigilante de 9 segundos usaba el mismo campo (`step`) que
+`requireUser()` para mostrar «Comprobando tu acceso…». Si esa comprobación duraba,
+el vigilante podía mostrar un falso fallo aunque los archivos ya estuviesen cargados.
+Además, `getSession()` no tenía tiempo máximo y el perfil registrado dependía directamente
+ de RLS. La corrección añade `my_profile()` (`security definer`), pone límite a la lectura
+ de sesión/perfil y separa `assetsReady` del texto del paso.

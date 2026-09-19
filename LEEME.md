@@ -110,3 +110,10 @@ SQL, en orden: cierre → escritorio → equipo → cursos. Después subir todo 
 - Ejecutar `supabase_parche_bundle_invitado.sql` después de los parches de invitados.
 - Archivo de frontend: `assets/sesion.js`.
 - Los invitados cargan el estado de la clase mediante `class_bundle(uuid)`; no se modifican las políticas RLS existentes.
+
+## Arranque estable de usuarios registrados
+- Ejecutar `supabase_parche_arranque_estable.sql` después de los parches actuales.
+- Archivo de frontend: `assets/db.js` y todos los `.html` (vigilante de arranque).
+- `my_profile()` devuelve únicamente el perfil de `auth.uid()` como `security definer`.
+- El vigilante de 9 s solo comprueba que los archivos JS hayan cargado; ya no confunde
+  una consulta de acceso lenta con un fallo de descarga del campus.
