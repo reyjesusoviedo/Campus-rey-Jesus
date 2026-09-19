@@ -69,13 +69,15 @@
     await withTimeout(loadSettings(), 9000, "ajustes");
     step("Comprobando tu acceso…");
     let me = await currentProfile();
+    if (me && !me.user.is_anonymous) { try { sessionStorage.removeItem("hops"); } catch {} }
     if (!me) { location.replace("entrar.html"); return new Promise(() => {}); }
     // Invitado: solo puede estar en su clase
     if (me.user.is_anonymous) {
       const { data: gs, error: gsErr } = await withTimeout(sb.rpc("my_guest_session"), 9000, "tu clase");
       if (gsErr) { showFatal("No se pudo comprobar tu clase", gsErr.message); return new Promise(() => {}); }
       const here = /sesion\.html/.test(location.pathname), id = new URLSearchParams(location.search).get("id");
-      if (gs) { if (!here || id !== gs) { location.replace("sesion.html?id=" + gs); return new Promise(() => {}); } }
+      if (gs) { if (here && id === gs) { try { sessionStorage.removeItem("hops"); } catch {} }
+        else { hop("sesion.html?id=" + gs, "tu acceso apunta a otra clase"); return new Promise(() => {}); } }
       else { guestNoClass(); return new Promise(() => {}); }
     }
     let pendingClass = null; try { pendingClass = localStorage.getItem("pendingClass"); } catch {}
@@ -199,7 +201,13 @@
       new Promise(resolve => setTimeout(() => resolve({ data: null, error: { message: "TIEMPO_AGOTADO" + (label ? " (" + label + ")" : "") } }), ms || 9000))
     ]);
   }
+  function hop(dest, why) {
+    let n = 0; try { n = Number(sessionStorage.getItem("hops") || 0); } catch {}
+    if (n >= 3) { try { sessionStorage.removeItem("hops"); } catch {} showFatal("El campus no consigue abrir tu clase", (why || "") + " · Pulsa Reintentar o pide a tu maestro un enlace nuevo."); return false; }
+    try { sessionStorage.setItem("hops", String(n + 1)); } catch {}
+    location.replace(dest); return true;
+  }
   function step(txt) { const l = document.getElementById("loading"); if (l) l.textContent = txt; if (window.__campusBoot) window.__campusBoot.step = txt; }
 
-  window.Campus = { isAnon, showFatal, codeMessage, CODE_MSG, withTimeout, step, loadSettings, brandMark, helpLinks, settings: () => settingsCache || {}, sb, cfg, esc, fmtDate, initials, toast, currentProfile, requireUser, renderShell, isStaff, whatsappMessage, copy, qs, ROLE_LABEL };
+  window.Campus = { isAnon, showFatal, codeMessage, CODE_MSG, withTimeout, step, hop, loadSettings, brandMark, helpLinks, settings: () => settingsCache || {}, sb, cfg, esc, fmtDate, initials, toast, currentProfile, requireUser, renderShell, isStaff, whatsappMessage, copy, qs, ROLE_LABEL };
 })();

@@ -33,7 +33,8 @@
     const { data: s, error } = await withTimeout(sb.from("sessions").select("*, group:groups(*)").eq("id", sessionId).maybeSingle(), 9000, "clase");
     if (error || !s) {
       const l = $("loading");
-      if (l) l.innerHTML = /TIEMPO_AGOTADO/.test(error?.message || "") ? `La conexión está tardando demasiado. <a href="#" onclick="location.reload();return false" style="color:inherit;text-decoration:underline">Reintentar</a>` : `No tienes acceso a esta clase o ya no existe.${error ? " (" + esc(error.message).slice(0, 80) + ")" : ""}`;
+      try { sessionStorage.removeItem("hops"); } catch {}
+      if (l) l.innerHTML = /TIEMPO_AGOTADO/.test(error?.message || "") ? `La conexión está tardando demasiado. <a href="#" onclick="location.reload();return false" style="color:inherit;text-decoration:underline">Reintentar</a>` : `No se pudo abrir esta clase.${error ? " (" + esc(error.message).slice(0, 90) + ")" : " Puede que tu acceso no tenga permiso para verla."} <a href="#" onclick="location.reload();return false" style="color:inherit;text-decoration:underline">Reintentar</a>`;
       return false;
     }
     S.session = s; S.group = s.group;
