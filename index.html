@@ -5,18 +5,44 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Campus Rey Jesús Oviedo · Formación · Comunidad · Impacto</title>
 <meta name="description" content="Cursos gratuitos con lecciones interactivas y clases en directo.">
-<link rel="stylesheet" href="assets/styles.css?v=1.0.202609182142">
-<link rel="stylesheet" href="assets/piloto.css?v=1.0.202609182142">
-<link rel="stylesheet" href="assets/inicio.css?v=1.0.202609182142">
+<link rel="stylesheet" href="assets/styles.css?v=1.0.202609182242">
+<link rel="stylesheet" href="assets/piloto.css?v=1.0.202609182242">
+<link rel="stylesheet" href="assets/inicio.css?v=1.0.202609182242">
+<script>
+(function(){
+  window.__campusBoot = { step: "inicio", t0: Date.now() };
+  function fail(msg, detail){
+    if (document.getElementById("boot-fail")) return;
+    var d = document.createElement("div");
+    d.id = "boot-fail";
+    d.style.cssText = "position:fixed;inset:0;z-index:99999;background:#0b2f6b;color:#fff;display:grid;place-items:center;padding:24px;font-family:Inter,system-ui,sans-serif";
+    d.innerHTML = '<div style="background:#fff;color:#101827;border-radius:18px;padding:24px;max-width:420px;text-align:center">'
+      + '<h1 style="font-family:Georgia,serif;font-size:1.3rem;margin:0 0 8px">No se pudo abrir el campus</h1>'
+      + '<p style="color:#5b6673;margin:0 0 6px">' + msg + '</p>'
+      + '<p style="color:#9aa6b2;font-size:12px;margin:0 0 14px">Paso: ' + (window.__campusBoot.step || "?") + (detail ? " · " + String(detail).slice(0,120) : "") + '</p>'
+      + '<button id="bf-r" style="border:0;border-radius:10px;padding:12px 18px;font:inherit;font-weight:700;background:#0c70bb;color:#fff;width:100%">Reintentar</button>'
+      + '<p style="color:#9aa6b2;font-size:11px;margin:10px 0 0">v' + ((window.CAMPUS_CONFIG && window.CAMPUS_CONFIG.version) || '?') + '</p></div>';
+    document.body.appendChild(d);
+    document.getElementById("bf-r").onclick = function(){ location.reload(); };
+  }
+  window.__campusFail = fail;
+  window.addEventListener("error", function(e){
+    if (e.target && e.target.tagName === "SCRIPT") fail("No se pudo descargar una parte del campus. Comprueba tu conexión.", e.target.src);
+  }, true);
+  setTimeout(function(){
+    if (window.__campusBoot.step !== "listo") fail("El campus está tardando demasiado en cargar.", "");
+  }, 9000);
+})();
+</script>
 </head>
 <body class="site">
 <header class="s-top" id="top"><a class="brand" href="index.html" data-brand></a><button class="menu-btn" id="menu-btn" aria-label="Menú">☰</button><nav id="nav"></nav><a class="enter" href="entrar.html"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.4 0-8 2.2-8 5v2h16v-2c0-2.8-3.6-5-8-5Z"/></svg>Entrar al campus</a></header>
 <main id="app"><p class="meta" style="padding:40px;text-align:center">Cargando…</p></main>
 <footer class="s-foot" id="foot"></footer>
 <dialog class="soon-dialog" id="soon"><h3 id="soon-title">Próximamente</h3><p>Estamos preparando esta sección. Mientras tanto, echa un vistazo a los cursos.</p><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><a class="btn green" href="#cursos" id="soon-go">Ver cursos</a><button class="btn outline" style="color:#0b2f6b;border-color:#0b2f6b" id="soon-close">Cerrar</button></div></dialog>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="assets/config.js?v=1.0.202609182142"></script>
-<script src="assets/db.js?v=1.0.202609182142"></script>
-<script src="assets/inicio.js?v=1.0.202609182142"></script>
+<script src="assets/vendor/supabase.js?v=1.0.202609182242"></script>
+<script src="assets/config.js?v=1.0.202609182242"></script>
+<script src="assets/db.js?v=1.0.202609182242"></script>
+<script src="assets/inicio.js?v=1.0.202609182242"></script>
 </body>
 </html>
