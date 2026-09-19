@@ -30,6 +30,28 @@
   // ---------- carga ----------
   async function loadSession() {
     step("Leyendo la clase…");
+
+    // Los invitados no leen la clase tabla por tabla: una única función segura
+    // valida su vínculo y devuelve todo lo que necesita su pantalla. Así el acceso
+    // no depende de que varias políticas RLS distintas estén perfectamente alineadas.
+    if (me.user.is_anonymous) {
+      const { data: bundle, error } = await withTimeout(sb.rpc("class_bundle", { p_session: sessionId }), 9000, "clase");
+      if (error || !bundle?.session || !bundle?.group) {
+        const l = $("loading");
+        try { sessionStorage.removeItem("hops"); } catch {}
+        const msg = error?.message || "No se recibió la información de la clase.";
+        if (l) l.innerHTML = /TIEMPO_AGOTADO/.test(msg) ? `La conexión está tardando demasiado. <a href="#" onclick="location.reload();return false" style="color:inherit;text-decoration:underline">Reintentar</a>` : `No se pudo abrir esta clase. (${esc(Campus.codeMessage ? Campus.codeMessage(msg) : msg).slice(0, 110)}) <a href="#" onclick="location.reload();return false" style="color:inherit;text-decoration:underline">Reintentar</a>`;
+        return false;
+      }
+      S.guestBundle = bundle;
+      S.session = bundle.session;
+      S.group = bundle.group;
+      S.members = bundle.members || [];
+      S.teacher = false;
+      (S.members || []).forEach(m => { if (m?.user_id && m?.profile?.full_name) nameCache[m.user_id] = m.profile.full_name; });
+      return true;
+    }
+
     const { data: s, error } = await withTimeout(sb.from("sessions").select("*, group:groups(*)").eq("id", sessionId).maybeSingle(), 9000, "clase");
     if (error || !s) {
       const l = $("loading");
@@ -37,6 +59,7 @@
       if (l) l.innerHTML = /TIEMPO_AGOTADO/.test(error?.message || "") ? `La conexión está tardando demasiado. <a href="#" onclick="location.reload();return false" style="color:inherit;text-decoration:underline">Reintentar</a>` : `No se pudo abrir esta clase.${error ? " (" + esc(error.message).slice(0, 90) + ")" : " Puede que tu acceso no tenga permiso para verla."} <a href="#" onclick="location.reload();return false" style="color:inherit;text-decoration:underline">Reintentar</a>`;
       return false;
     }
+    S.guestBundle = null;
     S.session = s; S.group = s.group;
     step("Cargando participantes…");
     const mm = await withTimeout(sb.from("memberships").select("user_id, role").eq("group_id", s.group_id), 9000, "participantes");
@@ -47,14 +70,23 @@
     return true;
   }
   async function loadActivities() {
-    const { data, error } = await sb.from("activities").select("*").eq("session_id", sessionId).order("position").order("created_at");
-    if (error) { loadError("las actividades", error); return; }
-    S.activities = data || [];
+    if (me.user.is_anonymous && S.guestBundle) {
+      S.activities = S.guestBundle.activities || [];
+    } else {
+      const { data, error } = await sb.from("activities").select("*").eq("session_id", sessionId).order("position").order("created_at");
+      if (error) { loadError("las actividades", error); return; }
+      S.activities = data || [];
+    }
     const open = S.activities.find(a => a.status === "open");
     if (!S.teacher) S.focus = open ? open.id : (S.session.status === "closed" ? S.focus : null);
     else { const q = S.activities.find(a => a.status === "open" && a.content?.quick); if (q && S.focus !== q.id && !S.focusPinned) S.focus = q.id; else if (!S.focus || !S.activities.some(a => a.id === S.focus)) S.focus = open ? open.id : (S.activities[0]?.id || null); }
   }
-  async function loadMaterials() { const { data, error } = await sb.from("materials").select("*").eq("session_id", sessionId).order("position").order("created_at"); if (error) { loadError("el material", error); return; } S.materials = data || []; }
+  async function loadMaterials() {
+    if (me.user.is_anonymous && S.guestBundle) { S.materials = S.guestBundle.materials || []; return; }
+    const { data, error } = await sb.from("materials").select("*").eq("session_id", sessionId).order("position").order("created_at");
+    if (error) { loadError("el material", error); return; }
+    S.materials = data || [];
+  }
   const nameCache = {};
   async function namesFor(ids) {
     const missing = [...new Set(ids)].filter(id => id && !nameCache[id]);
@@ -63,6 +95,11 @@
   }
   function loadError(what, error) { console.error(what, error); if (!S.errShown) { S.errShown = true; toast("Error al cargar " + what + ": " + error.message); setTimeout(() => S.errShown = false, 15000); } }
   async function loadQuestions() {
+    if (me.user.is_anonymous && S.guestBundle) {
+      S.questions = S.guestBundle.questions || [];
+      S.votes = S.guestBundle.votes || [];
+      return;
+    }
     const { data, error } = await sb.from("questions").select("*").eq("session_id", sessionId).order("created_at");
     if (error) { loadError("las dudas", error); return; }
     const by = await namesFor((data || []).map(q => q.user_id));
@@ -71,15 +108,30 @@
     const v = ids.length ? await sb.from("question_votes").select("*").in("question_id", ids) : { data: [] };
     if (v.error) loadError("los votos", v.error); S.votes = v.data || [];
   }
-  async function loadStrokes() { const { data, error } = await sb.from("board_strokes").select("id, user_id, stroke").eq("session_id", sessionId).order("id"); if (error) { if (!/board_strokes/.test(error.message)) loadError("la pizarra", error); return; } S.strokes = data || []; S.boardLoaded = true; drawBoard(); }
-  async function loadReactions() { const { data, error } = await sb.from("reactions").select("*").eq("session_id", sessionId); if (error) { if (!/reactions/.test(error.message)) loadError("el semáforo", error); return; } S.reactions = data || []; }
+  async function loadStrokes() {
+    if (me.user.is_anonymous && S.guestBundle) { S.strokes = S.guestBundle.board_strokes || []; S.boardLoaded = true; drawBoard(); return; }
+    const { data, error } = await sb.from("board_strokes").select("id, user_id, stroke").eq("session_id", sessionId).order("id");
+    if (error) { if (!/board_strokes/.test(error.message)) loadError("la pizarra", error); return; }
+    S.strokes = data || []; S.boardLoaded = true; drawBoard();
+  }
+  async function loadReactions() {
+    if (me.user.is_anonymous && S.guestBundle) { S.reactions = S.guestBundle.reactions || []; return; }
+    const { data, error } = await sb.from("reactions").select("*").eq("session_id", sessionId);
+    if (error) { if (!/reactions/.test(error.message)) loadError("el semáforo", error); return; }
+    S.reactions = data || [];
+  }
   async function loadHelp() {
+    if (me.user.is_anonymous && S.guestBundle) { S.help = S.guestBundle.help || []; return; }
     const { data, error } = await sb.from("help_requests").select("*").eq("session_id", sessionId).eq("status", "open");
     if (error) { loadError("los avisos de ayuda", error); return; }
     const by = await namesFor((data || []).map(h => h.user_id));
     S.help = (data || []).map(h => ({ ...h, author: by(h.user_id) }));
   }
   async function loadMyResponses() {
+    if (me.user.is_anonymous && S.guestBundle) {
+      S.myResponses = Object.fromEntries((S.guestBundle.responses || []).map(r => [r.activity_id, r]));
+      return;
+    }
     const ids = S.activities.map(a => a.id); if (!ids.length) { S.myResponses = {}; return; }
     const { data, error } = await sb.from("responses").select("*").in("activity_id", ids).eq("user_id", me.user.id);
     if (error) { loadError("tus respuestas", error); return; }
@@ -1083,7 +1135,10 @@
   try {
     if (!(await loadSession())) { clearTimeout(bootFail); clearTimeout(openWatch); return; }
     step("Abriendo la clase…");
-    if (!S.teacher) sb.from("attendance").insert({ session_id: sessionId, user_id: me.user.id }).then(() => {}, () => {});
+    if (!S.teacher) {
+      const { error: attErr } = await sb.from("attendance").upsert({ session_id: sessionId, user_id: me.user.id }, { onConflict: "session_id,user_id", ignoreDuplicates: true });
+      if (attErr) console.warn("No se pudo registrar la asistencia", attErr);
+    }
     await namesFor([S.group.teacher_id]);
     if (S.teacher) await loadAgenda();
     await refreshAll(true); subscribe();

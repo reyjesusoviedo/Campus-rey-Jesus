@@ -43,11 +43,20 @@
   async function currentProfile() {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) return null;
+
+    // Un invitado no necesita consultar profiles para abrir su clase. Evitamos así
+    // que una política RLS de perfiles pueda bloquear la entrada en móvil. El nombre
+    // ya viaja en los metadatos de la sesión anónima y también se guarda localmente.
+    if (session.user.is_anonymous) {
+      let saved = "";
+      try { saved = localStorage.getItem("guestName") || ""; } catch {}
+      const fullName = session.user.user_metadata?.full_name || saved || "Invitado/a";
+      return { user: session.user, profile: { id: session.user.id, full_name: fullName, role: "student", incompleto: true } };
+    }
+
     const { data: profile, error } = await withTimeout(sb.from("profiles").select("*").eq("id", session.user.id).maybeSingle(), 9000, "perfil");
     if (error) { showFatal("No se pudo leer tu perfil", error.message); throw error; }
     if (!profile) {
-      // Invitado recién entrado: perfil mínimo. Usuario con cuenta sin perfil: es un fallo, no lo degradamos.
-      if (session.user.is_anonymous) return { user: session.user, profile: { id: session.user.id, full_name: "Invitado/a", role: "student", incompleto: true } };
       showFatal("Tu cuenta no tiene perfil en el campus", "Avisa a coordinación: " + (session.user.email || session.user.id));
       throw new Error("PERFIL_AUSENTE");
     }
