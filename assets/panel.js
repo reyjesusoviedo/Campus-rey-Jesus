@@ -214,7 +214,7 @@
       <p class="subtle" style="margin:0 0 10px;font-size:14px">Un código fijo del grupo para quien viene cada semana pero aún no se registra. Entra con su nombre y este código; después ya ve directamente la próxima clase. Caduca a los 90 días sin venir.</p>
       <div id="guest-result">${g.allow_guests && g.guest_code ? guestBox(g.guest_code) : ""}</div>
       <div class="live-controls"><button class="button secondary small" id="guest-on">${g.allow_guests && g.guest_code ? "Regenerar" : "Activar código de invitados"}</button>${g.allow_guests ? `<button class="button secondary small" id="guest-off">Desactivar</button>` : ""}</div>`, d => {
-      const guestLink = code => location.href.replace(/[^/]*$/, "entrar.html?clase=" + code);
+      const guestLink = code => location.href.replace(/[^/]*$/, "clase.html?c=" + code);
       d.querySelector("#guest-on").addEventListener("click", async () => {
         const { data: code, error } = await sb.rpc("set_group_guest_code", { p_group: g.id, p_enable: true });
         if (error) { toast("No se pudo activar: " + error.message); return; }

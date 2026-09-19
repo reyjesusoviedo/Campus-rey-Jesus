@@ -331,7 +331,7 @@
   async function inviteDialog() {
     let code = S.session.guest_code;
     if (!code || !S.session.allow_guests) { const { data, error } = await sb.rpc("set_session_guest_code", { p_session: sessionId, p_enable: true }); if (error) { toast("No se pudo generar: " + error.message); return; } code = data; await loadSession(); }
-    const base = location.href.replace(/[^/]*$/, ""), link = base + "entrar.html?clase=" + code, viewLink = base + "ver.html?c=" + code;
+    const base = location.href.replace(/[^/]*$/, ""), link = base + "clase.html?c=" + code, viewLink = base + "ver.html?c=" + code;
     const msg = `Clase: ${S.session.title} (${S.group.name})\nEntra aquí y escribe tu nombre:\n${link}`;
     openDialog("Invitar a esta clase", `
       <p class="subtle" style="margin-top:0">Quien tenga este código entra solo a esta clase, sin correo ni contraseña, y caduca al terminar. Para asistentes habituales usa el código de invitados del grupo (Mis grupos → Invitar).</p>
