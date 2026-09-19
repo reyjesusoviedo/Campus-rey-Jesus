@@ -67,7 +67,7 @@
 (function(){
   // Comprobar si hay una versión más nueva publicada y, si la hay, recargar una sola vez
   try {
-    var mine = "1.0.20260919142141";
+    var mine = "1.0.20260919145444";
     var last = sessionStorage.getItem("verReload") || "";
     fetch("version.txt?t=" + Date.now(), { cache: "no-store" })
       .then(function(r){ return r.ok ? r.text() : null; })
