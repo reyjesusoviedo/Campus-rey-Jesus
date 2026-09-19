@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Entrar · Campus Rey Jesús Oviedo</title>
-<link rel="stylesheet" href="assets/styles.css?v=1.0.202609182242">
-<link rel="stylesheet" href="assets/piloto.css?v=1.0.202609182242">
+<link rel="stylesheet" href="assets/styles.css?v=1.0.20260919122633">
+<link rel="stylesheet" href="assets/piloto.css?v=1.0.20260919122633">
 <script>
 (function(){
   window.__campusBoot = { step: "inicio", t0: Date.now() };
@@ -56,9 +56,9 @@
   <p class="meta" id="hint" style="margin-top:14px">Si te han dado de alta en el campus, entra con tu correo y la contraseña que te pasaron. Puedes cambiarla luego en «Mi perfil».</p>
 </main>
 
-<script src="assets/vendor/supabase.js?v=1.0.202609182242"></script>
-<script src="assets/config.js?v=1.0.202609182242"></script>
-<script src="assets/db.js?v=1.0.202609182242"></script>
+<script src="assets/vendor/supabase.js?v=1.0.20260919122633"></script>
+<script src="assets/config.js?v=1.0.20260919122633"></script>
+<script src="assets/db.js?v=1.0.20260919122633"></script>
 <script>
 (async () => {
   const { sb, cfg, esc, toast } = Campus;
@@ -67,14 +67,23 @@
 
   // Si ya hay sesión (o llega desde un enlace mágico), entrar directamente
   const wantsGuest = !!new URLSearchParams(location.search).get("clase"), hasInvite = !!new URLSearchParams(location.search).get("equipo") || !!new URLSearchParams(location.search).get("curso") || !!new URLSearchParams(location.search).get("recuperar") || /type=recovery/.test(location.hash);
-  sb.auth.onAuthStateChange((event, session) => { if (session && !wantsGuest) location.replace("panel.html"); });
+  const specialFlow = wantsGuest || hasInvite;
+  sb.auth.onAuthStateChange(async (event, session) => {
+    if (!session || specialFlow || event === "PASSWORD_RECOVERY") return;
+    if (session.user.is_anonymous) { const { data: gs } = await sb.rpc("my_guest_session"); location.replace(gs ? "sesion.html?id=" + gs : "entrar.html"); return; }
+    location.replace("panel.html");
+  });
   const { data: { session } } = await sb.auth.getSession();
-  if (session && !wantsGuest && !hasInvite) { location.replace("panel.html"); return; }
+  if (session && !wantsGuest && !hasInvite) {
+    if (session.user.is_anonymous) { const { data: gs } = await sb.rpc("my_guest_session"); if (gs) { location.replace("sesion.html?id=" + gs); return; } }
+    else { location.replace("panel.html"); return; }
+  }
 
   let mode = "password";
   const err = document.getElementById("error");
   { const c = new URLSearchParams(location.search).get("clase"); const { data: { session: cs } } = await sb.auth.getSession();
     if (c && !cs) { location.replace("clase.html?c=" + encodeURIComponent(c)); return; }
+    // Invitado que ya está dentro de una clase: se le devuelve a ella
     if (cs && cs.user.is_anonymous) { const { data: gs } = await sb.rpc("my_guest_session"); if (gs) { location.replace("sesion.html?id=" + gs); return; } } }
   const courseSlug = new URLSearchParams(location.search).get("curso");
   if (courseSlug) {
@@ -125,11 +134,12 @@
       btn.disabled = true;
       try {
         const { data: { session: cur } } = await sb.auth.getSession();
-        if (cur && !cur.user.is_anonymous) { const r = await sb.rpc("join_with_code_target", { p_code: code }); if (r.error) { err.textContent = "Código no válido o clase terminada."; return; } location.replace(r.data ? "sesion.html?id=" + r.data : "panel.html"); return; }
         if (!cur) { const { error } = await sb.auth.signInAnonymously({ options: { data: { full_name: name } } }); if (error) { err.textContent = error.message.includes("Anonymous") ? "El acceso de invitados no está activado. Avisa a coordinación." : error.message; return; } }
-        const { data: sid, error } = await sb.rpc("join_as_guest", { p_code: code, p_name: name });
-        if (error) { err.textContent = /no válido|caducado|terminada/i.test(error.message) ? "Código no válido, caducado o clase terminada. Pide a tu maestro el código actual." : "No se pudo entrar: " + error.message; return; }
-        location.replace(sid ? "sesion.html?id=" + sid : "panel.html");
+        const { data, error } = await sb.rpc("join_class", { p_code: code, p_name: name });
+        if (error) { err.textContent = Campus.codeMessage(error.message); return; }
+        const sid = data && data.session_id;
+        if (!sid) { err.textContent = Campus.codeMessage("SIN_CLASE"); return; }
+        location.replace("sesion.html?id=" + sid);
       } finally { btn.disabled = false; }
       return;
     }
