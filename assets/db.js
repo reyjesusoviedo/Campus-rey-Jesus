@@ -1,6 +1,8 @@
 /* Cliente compartido del campus · requiere config.js y supabase-js (UMD) */
 (function () {
+  if (window.__campusBoot) window.__campusBoot.step = "conectando";
   const cfg = window.CAMPUS_CONFIG;
+  if (!window.supabase || !window.supabase.createClient) { if (window.__campusFail) window.__campusFail("Falta una parte del campus (la conexión).", "supabase-js"); return; }
   const sb = window.supabase.createClient(cfg.url, cfg.key);
 
   const ROLE_LABEL = { coordinator: "Coordinación", teacher: "Maestro/a", student: "Alumno/a" };
@@ -41,8 +43,25 @@
   async function currentProfile() {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) return null;
-    const { data: profile } = await sb.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
-    return { user: session.user, profile: profile || { id: session.user.id, full_name: session.user.email, role: "student" } };
+    const { data: profile, error } = await sb.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
+    if (error) { showFatal("No se pudo leer tu perfil", error.message); throw error; }
+    if (!profile) {
+      // Invitado recién entrado: perfil mínimo. Usuario con cuenta sin perfil: es un fallo, no lo degradamos.
+      if (session.user.is_anonymous) return { user: session.user, profile: { id: session.user.id, full_name: "Invitado/a", role: "student", incompleto: true } };
+      showFatal("Tu cuenta no tiene perfil en el campus", "Avisa a coordinación: " + (session.user.email || session.user.id));
+      throw new Error("PERFIL_AUSENTE");
+    }
+    return { user: session.user, profile };
+  }
+
+  function guestNoClass() {
+    document.body.innerHTML = `<div style="min-height:100vh;display:grid;place-items:center;background:linear-gradient(160deg,#0b2f6b,#0a4f85 60%,#1263b8);color:#fff;font-family:Inter,system-ui,sans-serif;padding:24px;text-align:center">
+      <div style="background:#fff;color:#101827;border-radius:22px;padding:28px;max-width:420px">
+        <h1 style="font-family:Georgia,serif;font-size:1.4rem;margin:0 0 8px">Tu acceso no está en ninguna clase</h1>
+        <p style="color:#5b6673;margin:0 0 6px">${esc(CODE_MSG.SIN_VINCULO)}</p>
+        <p style="color:#9aa6b2;font-size:12px;margin:0 0 14px">Si la clase acaba de terminar, es normal: tu maestro te pasará un enlace nuevo la próxima vez.</p>
+        <a href="entrar.html" style="display:inline-block;background:#0c70bb;color:#fff;border-radius:10px;padding:12px 18px;font-weight:700;text-decoration:none">Escribir un código</a>
+      </div></div>`;
   }
 
   async function requireUser() {
@@ -51,28 +70,34 @@
     if (!me) { location.replace("entrar.html"); return new Promise(() => {}); }
     // Invitado: solo puede estar en su clase
     if (me.user.is_anonymous) {
-      const { data: gs } = await sb.rpc("my_guest_session");
+      const { data: gs, error: gsErr } = await sb.rpc("my_guest_session");
+      if (gsErr) { showFatal("No se pudo comprobar tu clase", gsErr.message); return new Promise(() => {}); }
       const here = /sesion\.html/.test(location.pathname), id = new URLSearchParams(location.search).get("id");
       if (gs) { if (!here || id !== gs) { location.replace("sesion.html?id=" + gs); return new Promise(() => {}); } }
-      else { document.body.innerHTML = `<div style="min-height:100vh;display:grid;place-items:center;background:#0b2f6b;color:#fff;font-family:Inter,sans-serif;padding:24px;text-align:center"><div style="background:#fff;color:#101827;border-radius:22px;padding:28px;max-width:420px"><h1 style="font-family:Georgia,serif;font-size:1.4rem;margin:0 0 8px">La clase ha terminado</h1><p style="color:#5b6673">Gracias por venir. Cuando tu maestro abra la siguiente, te pasará un enlace nuevo.</p></div></div>`; return new Promise(() => {}); }
+      else { guestNoClass(); return new Promise(() => {}); }
     }
     let pendingClass = null; try { pendingClass = localStorage.getItem("pendingClass"); } catch {}
     if (pendingClass && !me.user.is_anonymous && !/sesion\.html/.test(location.pathname)) {
-      try { localStorage.removeItem("pendingClass"); } catch {}
-      const { data: sid, error } = await sb.rpc("join_with_code_target", { p_code: pendingClass });
-      if (!error && sid) { location.replace("sesion.html?id=" + sid); return new Promise(() => {}); }
-      if (error) toast("Código de clase: " + error.message);
+      const { data, error } = await sb.rpc("join_class", { p_code: pendingClass, p_name: null });
+      const sid = data && data.session_id;
+      if (!error && sid) { try { localStorage.removeItem("pendingClass"); } catch {} location.replace("sesion.html?id=" + sid); return new Promise(() => {}); }
+      if (error) { toast(codeMessage(error.message)); if (/CODIGO_NO_VALIDO|CLASE_TERMINADA/.test(error.message)) { try { localStorage.removeItem("pendingClass"); } catch {} } }
     }
     let course = null; try { course = localStorage.getItem("pendingCourse"); } catch {}
     if (course && !me.user.is_anonymous) {
-      try { localStorage.removeItem("pendingCourse"); } catch {}
-      const { data: c } = await sb.from("courses").select("id").eq("slug", course).maybeSingle();
-      if (c) { let phone = null; try { phone = localStorage.getItem("pendingPhone"); localStorage.removeItem("pendingPhone"); } catch {} const { data: eid, error } = await sb.rpc("enroll", { p_course: c.id, p_phone: phone }); if (error) toast("No se pudo apuntar: " + error.message); else if (!/curso\.html/.test(location.pathname)) { location.replace("curso.html?e=" + eid); return new Promise(() => {}); } }
+      const { data: c, error: cErr } = await sb.from("courses").select("id").eq("slug", course).maybeSingle();
+      if (cErr) toast("No se pudo abrir el curso: " + cErr.message);
+      else if (!c) { try { localStorage.removeItem("pendingCourse"); } catch {} }
+      else { let phone = null; try { phone = localStorage.getItem("pendingPhone"); } catch {}
+        const { data: eid, error } = await sb.rpc("enroll", { p_course: c.id, p_phone: phone });
+        if (error) toast("No se pudo apuntar: " + error.message);
+        else { try { localStorage.removeItem("pendingCourse"); localStorage.removeItem("pendingPhone"); } catch {}
+          if (!/curso\.html/.test(location.pathname)) { location.replace("curso.html?e=" + eid); return new Promise(() => {}); } } }
     }
     let token = null; try { token = localStorage.getItem("staffInvite"); } catch {}
     if (token && !me.user.is_anonymous) {
       const { data, error } = await sb.rpc("accept_staff_invite", { p_token: token });
-      try { localStorage.removeItem("staffInvite"); } catch {}
+      if (!error || /no encontrada|caducad/i.test(error.message)) { try { localStorage.removeItem("staffInvite"); } catch {} }
       if (error) toast("Invitación: " + error.message);
       else if (data && !data.already) { toast("Ya formas parte del equipo"); me = await currentProfile(); if (!/resumen/.test(location.pathname)) { location.replace("resumen.html"); return new Promise(() => {}); } }
     }
@@ -150,5 +175,20 @@
   // Si una pantalla se queda en "Cargando…" más de 12 segundos, avisamos
   setTimeout(() => { const l = document.getElementById("loading"); if (l && !l.hidden && l.offsetParent !== null) showFatal("La pantalla está tardando demasiado", "Comprueba tu conexión y pulsa Reintentar. Si sigue igual, avisa a coordinación (v" + (cfg.version || "?") + ")."); }, 12000);
 
-  window.Campus = { isAnon, showFatal, loadSettings, brandMark, helpLinks, settings: () => settingsCache || {}, sb, cfg, esc, fmtDate, initials, toast, currentProfile, requireUser, renderShell, isStaff, whatsappMessage, copy, qs, ROLE_LABEL };
+  if (window.__campusBoot) window.__campusBoot.step = "listo";
+  const CODE_MSG = {
+    CODIGO_NO_VALIDO: "El código no es válido o ha caducado. Pídele a tu maestro el enlace de hoy.",
+    SIN_CLASE: "Ahora mismo no hay ninguna clase abierta en este grupo. Vuelve cuando empiece.",
+    CLASE_TERMINADA: "Esta clase ya ha terminado. Gracias por venir.",
+    SIN_INVITADOS: "Esta clase todavía no admite invitados. Pide a tu maestro que active la invitación.",
+    SIN_VINCULO: "Tu acceso no está vinculado a ninguna clase. Entra con el enlace o el código que te ha dado tu maestro."
+  };
+  function codeMessage(raw) {
+    const k = Object.keys(CODE_MSG).find(x => String(raw || "").includes(x));
+    if (k) return CODE_MSG[k];
+    if (/Failed to fetch|NetworkError|network/i.test(String(raw))) return "No hay conexión ahora mismo. Comprueba tu internet y vuelve a intentarlo.";
+    return "No se pudo entrar: " + String(raw || "").slice(0, 140);
+  }
+
+  window.Campus = { isAnon, showFatal, codeMessage, CODE_MSG, loadSettings, brandMark, helpLinks, settings: () => settingsCache || {}, sb, cfg, esc, fmtDate, initials, toast, currentProfile, requireUser, renderShell, isStaff, whatsappMessage, copy, qs, ROLE_LABEL };
 })();
