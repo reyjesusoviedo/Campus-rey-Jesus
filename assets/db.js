@@ -43,7 +43,7 @@
   async function currentProfile() {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) return null;
-    const { data: profile, error } = await sb.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
+    const { data: profile, error } = await withTimeout(sb.from("profiles").select("*").eq("id", session.user.id).maybeSingle(), 9000, "perfil");
     if (error) { showFatal("No se pudo leer tu perfil", error.message); throw error; }
     if (!profile) {
       // Invitado recién entrado: perfil mínimo. Usuario con cuenta sin perfil: es un fallo, no lo degradamos.
@@ -65,12 +65,14 @@
   }
 
   async function requireUser() {
-    await loadSettings();
+    step("Preparando el campus…");
+    await withTimeout(loadSettings(), 9000, "ajustes");
+    step("Comprobando tu acceso…");
     let me = await currentProfile();
     if (!me) { location.replace("entrar.html"); return new Promise(() => {}); }
     // Invitado: solo puede estar en su clase
     if (me.user.is_anonymous) {
-      const { data: gs, error: gsErr } = await sb.rpc("my_guest_session");
+      const { data: gs, error: gsErr } = await withTimeout(sb.rpc("my_guest_session"), 9000, "tu clase");
       if (gsErr) { showFatal("No se pudo comprobar tu clase", gsErr.message); return new Promise(() => {}); }
       const here = /sesion\.html/.test(location.pathname), id = new URLSearchParams(location.search).get("id");
       if (gs) { if (!here || id !== gs) { location.replace("sesion.html?id=" + gs); return new Promise(() => {}); } }
@@ -190,5 +192,14 @@
     return "No se pudo entrar: " + String(raw || "").slice(0, 140);
   }
 
-  window.Campus = { isAnon, showFatal, codeMessage, CODE_MSG, loadSettings, brandMark, helpLinks, settings: () => settingsCache || {}, sb, cfg, esc, fmtDate, initials, toast, currentProfile, requireUser, renderShell, isStaff, whatsappMessage, copy, qs, ROLE_LABEL };
+  // Ninguna consulta puede colgarse sin decir nada
+  function withTimeout(promise, ms, label) {
+    return Promise.race([
+      Promise.resolve(promise),
+      new Promise(resolve => setTimeout(() => resolve({ data: null, error: { message: "TIEMPO_AGOTADO" + (label ? " (" + label + ")" : "") } }), ms || 9000))
+    ]);
+  }
+  function step(txt) { const l = document.getElementById("loading"); if (l) l.textContent = txt; if (window.__campusBoot) window.__campusBoot.step = txt; }
+
+  window.Campus = { isAnon, showFatal, codeMessage, CODE_MSG, withTimeout, step, loadSettings, brandMark, helpLinks, settings: () => settingsCache || {}, sb, cfg, esc, fmtDate, initials, toast, currentProfile, requireUser, renderShell, isStaff, whatsappMessage, copy, qs, ROLE_LABEL };
 })();

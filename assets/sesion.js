@@ -1,5 +1,11 @@
 (async () => {
   const { sb, esc, fmtDate, toast, requireUser, renderShell, qs, initials, copy } = Campus;
+  const step = Campus.step, withTimeout = Campus.withTimeout;
+  // Vigilante: si en 14 s no se ha abierto la clase, la pantalla lo dice
+  const openWatch = setTimeout(() => {
+    const l = document.getElementById("loading");
+    if (l && l.offsetParent !== null) l.innerHTML = `No se pudo abrir la clase (se quedó en: ${esc(String((window.__campusBoot && window.__campusBoot.step) || "inicio"))}). <a href="#" onclick="location.reload();return false" style="color:inherit;text-decoration:underline">Reintentar</a>`;
+  }, 14000);
   const me = await requireUser();
   renderShell(me, "sesion");
   const sessionId = qs("id");
@@ -23,10 +29,16 @@
 
   // ---------- carga ----------
   async function loadSession() {
-    const { data: s, error } = await sb.from("sessions").select("*, group:groups(*)").eq("id", sessionId).maybeSingle();
-    if (error || !s) { $("loading").textContent = "No tienes acceso a esta clase o no existe." + (error ? " (" + error.message + ")" : ""); return false; }
+    step("Leyendo la clase…");
+    const { data: s, error } = await withTimeout(sb.from("sessions").select("*, group:groups(*)").eq("id", sessionId).maybeSingle(), 9000, "clase");
+    if (error || !s) {
+      const l = $("loading");
+      if (l) l.innerHTML = /TIEMPO_AGOTADO/.test(error?.message || "") ? `La conexión está tardando demasiado. <a href="#" onclick="location.reload();return false" style="color:inherit;text-decoration:underline">Reintentar</a>` : `No tienes acceso a esta clase o ya no existe.${error ? " (" + esc(error.message).slice(0, 80) + ")" : ""}`;
+      return false;
+    }
     S.session = s; S.group = s.group;
-    const mm = await sb.from("memberships").select("user_id, role").eq("group_id", s.group_id);
+    step("Cargando participantes…");
+    const mm = await withTimeout(sb.from("memberships").select("user_id, role").eq("group_id", s.group_id), 9000, "participantes");
     if (mm.error) loadError("los miembros", mm.error);
     const by = await namesFor((mm.data || []).map(m => m.user_id));
     S.members = (mm.data || []).map(m => ({ ...m, profile: by(m.user_id) }));
@@ -1068,15 +1080,16 @@
   // ---------- arranque ----------
   const bootFail = setTimeout(() => { const l = $("loading"); if (l) l.innerHTML = `No se pudo abrir la clase. <a href="#" onclick="location.reload();return false">Reintentar</a>`; }, 10000);
   try {
-    if (!(await loadSession())) { clearTimeout(bootFail); return; }
-    if (!S.teacher) sb.from("attendance").insert({ session_id: sessionId, user_id: me.user.id }).then(() => {});
+    if (!(await loadSession())) { clearTimeout(bootFail); clearTimeout(openWatch); return; }
+    step("Abriendo la clase…");
+    if (!S.teacher) sb.from("attendance").insert({ session_id: sessionId, user_id: me.user.id }).then(() => {}, () => {});
     await namesFor([S.group.teacher_id]);
     if (S.teacher) await loadAgenda();
     await refreshAll(true); subscribe();
-    clearTimeout(bootFail);
+    clearTimeout(bootFail); clearTimeout(openWatch);
     $("loading")?.remove(); const cont = $("contenido"); if (cont) cont.hidden = false;
   } catch (e) {
-    clearTimeout(bootFail);
+    clearTimeout(bootFail); clearTimeout(openWatch);
     const l = $("loading"); if (l) l.innerHTML = `No se pudo abrir la clase: ${esc(String((e && e.message) || e)).slice(0, 120)}. <a href="#" onclick="location.reload();return false">Reintentar</a>`;
     if (Campus.showFatal) Campus.showFatal("No se pudo abrir la clase", (e && e.message) || e);
   }
