@@ -41,12 +41,19 @@
   }
 
   async function currentProfile() {
-    const { data: { session } } = await sb.auth.getSession();
+    // La comprobación de sesión también tiene límite de tiempo. En algunos navegadores
+    // getSession() puede quedar esperando un bloqueo interno de almacenamiento; nunca
+    // dejamos la pantalla colgada indefinidamente.
+    const auth = await withTimeout(sb.auth.getSession(), 6000, "sesión");
+    if (auth?.error) {
+      showFatal("No se pudo comprobar tu sesión", auth.error.message);
+      throw new Error(auth.error.message || "SESION_NO_DISPONIBLE");
+    }
+    const session = auth?.data?.session || null;
     if (!session) return null;
 
-    // Un invitado no necesita consultar profiles para abrir su clase. Evitamos así
-    // que una política RLS de perfiles pueda bloquear la entrada en móvil. El nombre
-    // ya viaja en los metadatos de la sesión anónima y también se guarda localmente.
+    // Un invitado no necesita consultar profiles para abrir su clase. El nombre ya
+    // viaja en los metadatos de Auth y se conserva localmente.
     if (session.user.is_anonymous) {
       let saved = "";
       try { saved = localStorage.getItem("guestName") || ""; } catch {}
@@ -54,11 +61,23 @@
       return { user: session.user, profile: { id: session.user.id, full_name: fullName, role: "student", incompleto: true } };
     }
 
-    const { data: profile, error } = await withTimeout(sb.from("profiles").select("*").eq("id", session.user.id).maybeSingle(), 9000, "perfil");
-    if (error) { showFatal("No se pudo leer tu perfil", error.message); throw error; }
+    // El arranque de una cuenta registrada NO depende ya de las políticas RLS de
+    // profiles. my_profile() solo puede devolver la fila de auth.uid() y se ejecuta
+    // como SECURITY DEFINER, evitando las recursiones que bloquearon a maestros.
+    const pr = await withTimeout(sb.rpc("my_profile"), 6000, "perfil");
+    if (pr?.error) {
+      const detail = String(pr.error.message || "");
+      showFatal("No se pudo leer tu perfil", detail.includes("my_profile") ? "Falta ejecutar el parche SQL de arranque estable." : detail);
+      throw new Error(detail || "PERFIL_NO_DISPONIBLE");
+    }
+    const profile = Array.isArray(pr?.data) ? pr.data[0] : pr?.data;
     if (!profile) {
       showFatal("Tu cuenta no tiene perfil en el campus", "Avisa a coordinación: " + (session.user.email || session.user.id));
       throw new Error("PERFIL_AUSENTE");
+    }
+    if (profile.active === false) {
+      showFatal("Esta cuenta está desactivada", "Pide a coordinación que reactive tu acceso.");
+      throw new Error("CUENTA_DESACTIVADA");
     }
     return { user: session.user, profile };
   }
@@ -188,7 +207,7 @@
   // Si una pantalla se queda en "Cargando…" más de 12 segundos, avisamos
   setTimeout(() => { const l = document.getElementById("loading"); if (l && !l.hidden && l.offsetParent !== null) showFatal("La pantalla está tardando demasiado", "Comprueba tu conexión y pulsa Reintentar. Si sigue igual, avisa a coordinación (v" + (cfg.version || "?") + ")."); }, 12000);
 
-  if (window.__campusBoot) window.__campusBoot.step = "listo";
+  if (window.__campusBoot) { window.__campusBoot.assetsReady = true; window.__campusBoot.step = "código cargado"; }
   const CODE_MSG = {
     CODIGO_NO_VALIDO: "El código no es válido o ha caducado. Pídele a tu maestro el enlace de hoy.",
     SIN_CLASE: "Ahora mismo no hay ninguna clase abierta en este grupo. Vuelve cuando empiece.",
