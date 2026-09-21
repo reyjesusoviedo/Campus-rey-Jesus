@@ -93,22 +93,40 @@
     return { id: r.data.session_id };
   };
 
-  // Si ya hay sesión en este móvil, entrar directamente
+  // Las cuentas registradas pueden entrar directamente. Un usuario anónimo, aunque
+  // conserve sesión de una visita anterior, debe confirmar siempre su nombre antes
+  // de vincularse a esta clase. Así nunca aparece como «Invitado/a» por reutilizar
+  // una sesión anónima antigua.
   const { data: { session } } = await sb.auth.getSession();
-  if (session) {
+  const u = session?.user || null;
+  const providers = Array.isArray(u?.app_metadata?.providers) ? u.app_metadata.providers : [];
+  const provider = String(u?.app_metadata?.provider || "").toLowerCase();
+  const isAnonSession = !!(u && (
+    u.is_anonymous === true ||
+    provider === "anonymous" ||
+    providers.includes("anonymous") ||
+    (!u.email && !u.phone)
+  ));
+
+  // Solo las cuentas registradas entran directamente. Una sesión anónima debe
+  // confirmar siempre su nombre, incluso si la librería de Supabase no expone
+  // la propiedad `is_anonymous` en ese dispositivo.
+  if (session && !isAnonSession) {
     card.innerHTML = head + `<p class="sub">Entrando a la clase…</p>`;
     const r = await enter(null);
     if (r.id) { location.replace("sesion.html?id=" + r.id); return; }
     if (r.error) { card.innerHTML = head + `<h1>No se pudo entrar</h1><p class="sub">${esc(r.error)}</p><a class="button secondary" href="entrar.html">Escribir un código</a>`; return; }
   }
 
-  let saved = ""; try { saved = localStorage.getItem("guestName") || ""; } catch {}
+  // No rellenamos automáticamente el campo para invitados: queremos que confirme
+  // de forma explícita cómo quiere aparecer ante el maestro en esta clase.
+  let saved = "";
   card.innerHTML = head +
     `${info.status === "live" ? `<span class="live"><i></i> EN DIRECTO</span>` : ""}
      <h1>${esc(title)}</h1><p class="sub">${esc(group)}${teacher ? " · " + esc(teacher) : ""}${info.starts_at ? " · " + fmtDate(info.starts_at) : ""}</p>
      ${closed ? `<p class="sub">Esta clase ya ha terminado.</p><a class="button secondary" href="entrar.html">Ir al campus</a>` :
      `<label for="nm" style="display:block;font-weight:700;margin-bottom:6px">¿Cómo te llamas?</label>
-      <input id="nm" value="${esc(saved)}" placeholder="Tu nombre" autocomplete="name" autocapitalize="words">
+      <input id="nm" value="${esc(saved)}" placeholder="Tu nombre y apellido" autocomplete="name" autocapitalize="words" maxlength="80" required>
       <button class="button" id="go">Entrar a la clase</button>
       <p class="err" id="err"></p>
       <p class="meta" style="margin-top:12px">¿Ya tienes cuenta en el campus? <a href="entrar.html?clase=${encodeURIComponent(code)}">Entra con tu correo</a></p>`}`;
@@ -120,7 +138,12 @@
     try { localStorage.setItem("guestName", name); } catch {}
     btn.disabled = true; btn.textContent = "Entrando…"; err.textContent = "";
     const r = await enter(name);
-    if (r.error) { err.textContent = r.error.includes("no válido") || r.error.includes("terminada") ? "El código ya no es válido o la clase ha terminado." : r.error; btn.disabled = false; btn.textContent = "Entrar a la clase"; return; }
+    if (r.error) {
+      err.textContent = /NOMBRE_REQUERIDO/.test(r.error)
+        ? "Escribe tu nombre para que tu maestro sepa quién eres."
+        : (r.error.includes("no válido") || r.error.includes("terminada") ? "El código ya no es válido o la clase ha terminado." : r.error);
+      btn.disabled = false; btn.textContent = "Entrar a la clase"; nm.focus(); return;
+    }
     location.replace("sesion.html?id=" + r.id);
   };
   btn.addEventListener("click", go);

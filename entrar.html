@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Entrar · Campus Rey Jesús Oviedo</title>
-<link rel="stylesheet" href="assets/styles.css?v=1.0.20260919151607">
-<link rel="stylesheet" href="assets/piloto.css?v=1.0.20260919151607">
+<link rel="stylesheet" href="assets/styles.css?v=1.0.20260919153134">
+<link rel="stylesheet" href="assets/piloto.css?v=1.0.20260919153134">
 <script>
 (function(){
   window.__campusBoot = { step: "inicio", t0: Date.now() };
@@ -36,7 +36,7 @@
 (function(){
   // Comprobar si hay una versión más nueva publicada y, si la hay, recargar una sola vez
   try {
-    var mine = "1.0.20260919151607";
+    var mine = "1.0.20260919153134";
     var last = sessionStorage.getItem("verReload") || "";
     fetch("version.txt?t=" + Date.now(), { cache: "no-store" })
       .then(function(r){ return r.ok ? r.text() : null; })
@@ -67,7 +67,7 @@
 
   <div class="field" id="name-field"><label for="name">Tu nombre y apellido</label><input id="name" autocomplete="name"></div>
   <div class="field" id="phone-field" hidden><label for="phone">Teléfono (WhatsApp)</label><input id="phone" type="tel" autocomplete="tel" placeholder="+34 …"></div>
-  <div class="field" id="code-field" hidden><label for="class-code">Código de la clase o del grupo</label><input id="class-code" maxlength="6" autocomplete="off" style="text-transform:uppercase;letter-spacing:.2em;text-align:center;font-size:1.3rem"></div>
+  <div class="field" id="code-field" hidden><label for="class-code">Código de la clase</label><input id="class-code" maxlength="6" autocomplete="off" style="text-transform:uppercase;letter-spacing:.2em;text-align:center;font-size:1.3rem"></div>
   <div class="field" id="email-field"><label for="email">Correo</label><input id="email" type="email" autocomplete="email" required></div>
   <div class="field" id="pass-field"><label for="password">Contraseña</label><input id="password" type="password" autocomplete="current-password"></div>
   <p class="form-error" id="error" role="alert"></p>
@@ -76,9 +76,9 @@
   <p class="meta" id="hint" style="margin-top:14px">Si te han dado de alta en el campus, entra con tu correo y la contraseña que te pasaron. Puedes cambiarla luego en «Mi perfil».</p>
 </main>
 
-<script src="assets/vendor/supabase.js?v=1.0.20260919151607"></script>
-<script src="assets/config.js?v=1.0.20260919151607"></script>
-<script src="assets/db.js?v=1.0.20260919151607"></script>
+<script src="assets/vendor/supabase.js?v=1.0.20260919153134"></script>
+<script src="assets/config.js?v=1.0.20260919153134"></script>
+<script src="assets/db.js?v=1.0.20260919153134"></script>
 <script>
 (async () => {
   const { sb, cfg, esc, toast } = Campus;
@@ -141,7 +141,7 @@
     document.getElementById("email-field").hidden = mode === "guest";
     document.getElementById("go").textContent = mode === "password" ? "Entrar" : mode === "signup" ? "Apuntarme" : mode === "guest" ? "Entrar a la clase" : "Enviarme el enlace";
     document.getElementById("pass-field").hidden = !(mode === "password" || mode === "signup");
-    document.getElementById("hint").textContent = mode === "guest" ? "Sin correo ni contraseña: escribe tu nombre y el código que te ha dado tu maestro (de la clase o del grupo). Tu acceso se guarda en este dispositivo." : mode === "signup" ? "Gratuito. Elige una contraseña y entrarás directamente a tu curso." : "Si te han dado de alta en el campus, entra con tu correo y la contraseña que te pasaron. Puedes cambiarla luego en «Mi perfil».";
+    document.getElementById("hint").textContent = mode === "guest" ? "Sin correo ni contraseña: escribe tu nombre y el código de esta clase. Tu acceso sirve para esta clase." : mode === "signup" ? "Gratuito. Elige una contraseña y entrarás directamente a tu curso." : "Si te han dado de alta en el campus, entra con tu correo y la contraseña que te pasaron. Puedes cambiarla luego en «Mi perfil».";
     err.textContent = "";
   }));
 
