@@ -25,9 +25,10 @@
     const [g, s, p] = await Promise.all([
       sb.from("groups").select("*, memberships(user_id, role)").order("name"),
       sb.from("sessions").select("id, group_id, title, starts_at, status, recording_url, auto_created, objectives").gte("starts_at", addDays(from, -1).toISOString()).lt("starts_at", addDays(to, 1).toISOString()).order("starts_at"),
-      coord ? sb.from("profiles").select("id, full_name, role").in("role", ["teacher", "coordinator"]).order("full_name") : Promise.resolve({ data: [] })
+      coord ? sb.from("profiles").select("id, full_name, role, active").in("role", ["teacher", "coordinator"]).eq("active", true).order("full_name") : Promise.resolve({ data: [] })
     ]);
-    if (g.error) { app.innerHTML = `<p class="notice">No se pudo cargar: ${esc(g.error.message)}</p>`; return; }
+    const loadError = g.error || s.error || p.error;
+    if (loadError) { app.innerHTML = `<p class="notice">No se pudo cargar: ${esc(loadError.message)}</p>`; return; }
     S.groups = g.data || []; S.sessions = s.data || []; S.staffList = p.data || [];
     const tids = [...new Set(S.groups.map(x => x.teacher_id).filter(Boolean))].filter(id => !S.staffList.some(x => x.id === id));
     S.names = S.names || {}; if (tids.length) { const r = await sb.from("profiles").select("id, full_name").in("id", tids); (r.data || []).forEach(x => S.names[x.id] = x.full_name); }
@@ -43,7 +44,7 @@
     const teaching = new Set(S.sessions.map(x => S.groups.find(g => g.id === x.group_id)?.teacher_id).filter(Boolean)).size;
     app.innerHTML = `
       <div class="esc-top"><div><h1>Hola, ${esc(first)}</h1><p>${label} · ${S.sessions.length} clases${coord ? ` · ${teaching} maestros dando clase` : ""}</p></div>
-        <div class="r"><button class="button secondary small" id="b-group">+ Grupo</button><button class="button secondary small" id="b-session">+ Clase</button>${coord ? `<a class="button teal small" href="equipo.html">+ Invitar maestro</a>` : ""}</div></div>
+        <div class="r">${coord ? `<button class="button secondary small" id="b-group">+ Grupo</button>` : ""}<button class="button secondary small" id="b-session">+ Clase</button>${coord ? `<a class="button teal small" href="equipo.html?nuevo=1">+ Persona</a>` : ""}</div></div>
       <div class="alerts" id="alerts">${alertsHtml()}</div>
       <div class="esc-grid ${coord ? "" : "no-teachers"}">
         <div class="esc-card"><h3>Grupos <span class="lk">${S.groups.length}</span></h3><div class="glist" id="glist">${S.groups.map(groupHtml).join("") || `<p class="meta">Aún no hay grupos.</p>`}</div></div>
@@ -87,7 +88,7 @@
   }
 
   function bind() {
-    app.querySelector("#b-group").addEventListener("click", newGroupDialog);
+    app.querySelector("#b-group")?.addEventListener("click", newGroupDialog);
     app.querySelector("#b-session").addEventListener("click", () => Shell.quickClassDialog(me));
     app.querySelector("#b-view").addEventListener("click", () => { S.view = S.view === "week" ? "month" : "week"; load(); });
     app.querySelectorAll("[data-nav]").forEach(b => b.addEventListener("click", () => { const n = Number(b.dataset.nav); if (n === 0) S.week = startOfWeek(new Date()); else if (S.view === "week") S.week = addDays(S.week, 7 * n); else S.week = startOfWeek(new Date(S.week.getFullYear(), S.week.getMonth() + n, 1)); load(); }));
@@ -123,12 +124,13 @@
         ${next ? `<a class="button teal small" href="preparar.html?id=${next.id}">Preparar</a><a class="button small" href="sesion.html?id=${next.id}">Entrar</a>` : ""}
         <button class="button secondary small" data-do="session">+ Clase</button>
         ${coord ? `<button class="button secondary small" data-do="assign">${g.teacher_id ? "Cambiar maestro" : "Asignar maestro"}</button>` : ""}
+        <button class="button secondary small" data-do="students">Alumnos</button>
         <button class="button secondary small" data-do="color">Color</button>
-        <a class="button secondary small" href="panel.html?lista=1">Alumnos, invitar, recurrencia…</a>
       </div>`, d => {
       d.querySelector('[data-do="session"]').addEventListener("click", () => { dialog.close(); Shell.quickClassDialog(me, g.id); });
       d.querySelector('[data-do="assign"]')?.addEventListener("click", () => { dialog.close(); assignDialog(g); });
-      d.querySelector('[data-do="color"]').addEventListener("click", () => { dialog.close(); openDialog("Color de " + g.name, `<div style="display:flex;gap:8px;flex-wrap:wrap">${PALETTE.map(c => `<button class="bc" data-c="${c}" style="background:${c};width:34px;height:34px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px var(--line)"></button>`).join("")}</div>`, dd => dd.querySelectorAll("[data-c]").forEach(b => b.addEventListener("click", async () => { await sb.from("groups").update({ color: b.dataset.c }).eq("id", g.id); dialog.close(); load(); }))); });
+      d.querySelector('[data-do="students"]').addEventListener("click", () => { dialog.close(); manageStudentsDialog(g); });
+      d.querySelector('[data-do="color"]').addEventListener("click", () => { dialog.close(); openDialog("Color de " + g.name, `<div style="display:flex;gap:8px;flex-wrap:wrap">${PALETTE.map(c => `<button class="bc" data-c="${c}" style="background:${c};width:34px;height:34px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px var(--line)"></button>`).join("")}</div>`, dd => dd.querySelectorAll("[data-c]").forEach(b => b.addEventListener("click", async () => { const { error } = await sb.from("groups").update({ color: b.dataset.c }).eq("id", g.id); if (error) { toast(error.message); return; } dialog.close(); load(); }))); });
     });
   }
   function sessionDialog(x) {
@@ -143,25 +145,24 @@
     const list = S.staffList.filter(p => p.role !== "coordinator" || true);
     openDialog("Maestro de " + g.name, `<ul class="members">${list.map(p => `<li><span class="avatar teal" style="width:30px;height:30px;font-size:11px">${esc(initials(p.full_name))}</span><span style="flex:1">${esc(p.full_name)}<br><small class="meta">${S.groups.filter(x => x.teacher_id === p.id).map(x => x.name).join(", ") || (p.role === "coordinator" ? "Coordinación" : "Sin grupo")}</small></span><button class="button ${g.teacher_id === p.id ? "" : "secondary"} small" data-pick="${p.id}">${g.teacher_id === p.id ? "Actual" : "Asignar"}</button></li>`).join("")}</ul>${g.teacher_id ? `<div class="live-controls"><button class="button secondary small" id="unassign">Dejar sin maestro</button></div>` : ""}`, d => {
       d.querySelectorAll("[data-pick]").forEach(b => b.addEventListener("click", () => assignTeacher(g, b.dataset.pick)));
-      d.querySelector("#unassign")?.addEventListener("click", async () => { await sb.from("groups").update({ teacher_id: null }).eq("id", g.id); dialog.close(); toast("Grupo sin maestro"); load(); });
+      d.querySelector("#unassign")?.addEventListener("click", async () => { const { error } = await sb.rpc("set_group_teacher", { p_group: g.id, p_teacher: null }); if (error) { toast(error.message); return; } dialog.close(); toast("Grupo sin maestro"); load(); });
     });
   }
   async function assignTeacher(g, tid) {
-    const { error } = await sb.from("groups").update({ teacher_id: tid }).eq("id", g.id);
+    const { error } = await sb.rpc("set_group_teacher", { p_group: g.id, p_teacher: tid });
     if (error) { toast("No se pudo asignar: " + error.message); return; }
-    if (g.teacher_id && g.teacher_id !== tid) await sb.from("memberships").delete().match({ group_id: g.id, user_id: g.teacher_id, role: "teacher" });
-    await sb.from("memberships").upsert({ group_id: g.id, user_id: tid, role: "teacher" }, { onConflict: "group_id,user_id" });
     dialog.open && dialog.close(); toast(`${tname(tid).split(" ")[0]} asignado a ${g.name}`); load();
   }
   async function newGroupDialog() {
     const teachers = coord ? S.staffList : [{ id: me.user.id, full_name: me.profile.full_name }];
-    const { data: regs } = await sb.rpc("registered_students");
+    const { data: regs, error: regsError } = await sb.rpc("registered_students");
+    if (regsError) { toast("No se pudieron cargar los alumnos: " + regsError.message); return; }
     openDialog("Nuevo grupo", `<div class="inline-form">
       <div class="field"><label for="g-name">Nombre</label><input id="g-name" placeholder="Nuevos creyentes · martes"></div>
       <div class="field"><label for="g-teacher">Maestro/a</label><select id="g-teacher"><option value="">Sin maestro por ahora</option>${teachers.map(t => `<option value="${t.id}" ${t.id === me.user.id ? "selected" : ""}>${esc(t.full_name)}</option>`).join("")}</select></div>
       <div class="row"><div class="field"><label for="g-sched">Horario</label><input id="g-sched" placeholder="Martes 20:00"></div><div class="field"><label for="g-video">Vídeo</label><select id="g-video"><option value="jitsi">Dentro del campus</option><option value="external">Meet/Zoom aparte</option></select></div></div>
       <div class="field" id="g-zoom-f" hidden><label for="g-zoom">Enlace de Meet/Zoom</label><input id="g-zoom" placeholder="https://meet.google.com/…"></div>
-      <div class="field"><label>Alumnos ya registrados (marca los que entran en este grupo)</label>${(regs || []).length ? `<input type="search" id="g-q" placeholder="Buscar…" style="margin-bottom:6px"><div id="g-students" style="max-height:180px;overflow:auto;display:grid;gap:4px">${regs.map(r => `<label class="g-st" data-n="${esc((r.full_name + " " + (r.email || "")).toLowerCase())}" style="display:flex;gap:8px;align-items:center;font-size:14px"><input type="checkbox" value="${r.id}"> ${esc(r.full_name)}<small class="meta">${r.groups?.length ? " · " + esc(r.groups.join(", ")) : ""}</small></label>`).join("")}</div>` : `<p class="meta">Aún no hay alumnos registrados; después podrás invitarlos con el código del grupo.</p>`}</div>
+      <div class="field"><label>Alumnos ya registrados (marca los que entran en este grupo)</label>${(regs || []).length ? `<input type="search" id="g-q" placeholder="Buscar…" style="margin-bottom:6px"><div id="g-students" style="max-height:180px;overflow:auto;display:grid;gap:4px">${regs.map(r => `<label class="g-st" data-n="${esc((r.full_name + " " + (r.email || "")).toLowerCase())}" style="display:flex;gap:8px;align-items:center;font-size:14px"><input type="checkbox" value="${r.id}"> ${esc(r.full_name)}<small class="meta">${r.groups?.length ? " · " + esc(r.groups.join(", ")) : " · sin grupo"}</small></label>`).join("")}</div>` : `<p class="meta">Aún no hay alumnos registrados. Créelos primero desde Equipo.</p>`}</div>
       <div class="field"><label for="g-desc">Descripción (opcional)</label><textarea id="g-desc" rows="2"></textarea></div>
       <p class="form-error" id="g-error"></p><button class="button" id="g-go">Crear grupo</button></div>`, d => {
       d.querySelector("#g-q")?.addEventListener("input", e => { const q = e.target.value.toLowerCase(); d.querySelectorAll(".g-st").forEach(l => l.hidden = q && !l.dataset.n.includes(q)); });
@@ -169,15 +170,43 @@
       d.querySelector("#g-go").addEventListener("click", async () => {
         const name = d.querySelector("#g-name").value.trim(); if (!name) { d.querySelector("#g-error").textContent = "Ponle un nombre."; return; }
         const teacher_id = d.querySelector("#g-teacher").value || null;
-        const { data: g, error } = await sb.from("groups").insert({ name, teacher_id, schedule_text: d.querySelector("#g-sched").value.trim() || null, zoom_url: d.querySelector("#g-zoom").value.trim() || null, description: d.querySelector("#g-desc").value.trim() || null, video_provider: d.querySelector("#g-video").value, color: PALETTE[S.groups.length % PALETTE.length] }).select().single();
-        if (error) { d.querySelector("#g-error").textContent = error.message; return; }
-        if (teacher_id) await sb.from("memberships").insert({ group_id: g.id, user_id: teacher_id, role: "teacher" });
         const picked = [...d.querySelectorAll("#g-students input:checked")].map(i => i.value);
-        for (const uid of picked) await sb.rpc("add_student_to_group", { p_group: g.id, p_user: uid });
+        d.querySelector("#g-go").disabled = true;
+        const { data: gid, error } = await sb.rpc("create_managed_group", {
+          p_name: name, p_teacher: teacher_id, p_students: picked,
+          p_schedule: d.querySelector("#g-sched").value.trim() || null,
+          p_zoom: d.querySelector("#g-zoom").value.trim() || null,
+          p_description: d.querySelector("#g-desc").value.trim() || null,
+          p_video_provider: d.querySelector("#g-video").value,
+          p_color: PALETTE[S.groups.length % PALETTE.length]
+        });
+        d.querySelector("#g-go").disabled = false;
+        if (error || !gid) { d.querySelector("#g-error").textContent = error?.message || "No se pudo crear el grupo."; return; }
         dialog.close(); toast("Grupo creado" + (picked.length ? ` con ${picked.length} alumnos` : "")); load();
       });
     });
   }
+  async function manageStudentsDialog(g) {
+    const [{ data: regs, error }, { data: memberships, error: mError }] = await Promise.all([
+      sb.rpc("registered_students"),
+      sb.from("memberships").select("user_id, role").eq("group_id", g.id)
+    ]);
+    if (error || mError) { toast((error || mError).message); return; }
+    const selected = new Set((memberships || []).filter(m => m.role === "student").map(m => m.user_id));
+    const rows = (regs || []).map(r => `<label class="g-st" data-n="${esc((r.full_name + " " + (r.email || "")).toLowerCase())}" style="display:flex;gap:8px;align-items:center;font-size:14px;padding:5px 0"><input type="checkbox" value="${r.id}" ${selected.has(r.id) ? "checked" : ""}> <span><b>${esc(r.full_name)}</b><br><small class="meta">${esc(r.email || "")}${r.groups?.length ? " · " + esc(r.groups.join(", ")) : " · sin grupo"}</small></span></label>`).join("");
+    openDialog("Alumnos de " + g.name, `<p class="subtle" style="margin-top:0">Marca los alumnos registrados que pertenecen a este grupo. Los invitados de una clase no se modifican aquí.</p>${rows ? `<input type="search" id="ms-q" placeholder="Buscar alumno…" style="margin-bottom:8px"><div id="ms-list" style="max-height:300px;overflow:auto">${rows}</div>` : `<p class="meta">No hay alumnos registrados. Créelos primero desde Equipo.</p>`}<p class="form-error" id="ms-error"></p><div class="live-controls"><a class="button secondary" href="equipo.html?nuevo=1">+ Crear alumno</a>${rows ? `<button class="button" id="ms-save">Guardar alumnos</button>` : ""}</div>`, d => {
+      d.querySelector("#ms-q")?.addEventListener("input", e => { const q = e.target.value.toLowerCase(); d.querySelectorAll(".g-st").forEach(x => x.hidden = q && !x.dataset.n.includes(q)); });
+      d.querySelector("#ms-save")?.addEventListener("click", async () => {
+        const users = [...d.querySelectorAll('#ms-list input[type="checkbox"]:checked')].map(x => x.value);
+        d.querySelector("#ms-save").disabled = true;
+        const { error: saveError } = await sb.rpc("set_group_students", { p_group: g.id, p_users: users });
+        d.querySelector("#ms-save").disabled = false;
+        if (saveError) { d.querySelector("#ms-error").textContent = saveError.message; return; }
+        dialog.close(); toast("Alumnos del grupo actualizados"); S.students = null; load();
+      });
+    });
+  }
+
   function newSessionDialog(g) {
     const d0 = new Date(); d0.setMinutes(0, 0, 0); d0.setHours(d0.getHours() + 1); const local = new Date(d0.getTime() - d0.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     openDialog("Nueva clase", `<div class="inline-form">
@@ -196,19 +225,16 @@
   // ---------- alumnos ----------
   async function loadStudents() {
     if (S.students) { renderStudents(); return; }
-    const ids = [...new Set(S.groups.flatMap(g => g.memberships.filter(m => m.role !== "teacher").map(m => m.user_id)))];
-    const rows = {}; ids.forEach(id => rows[id] = { id, groups: [], guest: false, last: null });
-    S.groups.forEach(g => g.memberships.forEach(m => { if (m.role === "teacher") return; rows[m.user_id].groups.push(g); if (m.role === "guest") rows[m.user_id].guest = true; }));
-    if (ids.length) { const p = await sb.from("profiles").select("id, full_name").in("id", ids); (p.data || []).forEach(x => rows[x.id].name = x.full_name); }
-    for (const g of S.groups) { const r = await sb.rpc("last_attendance", { p_group: g.id }); (r.data || []).forEach(x => { if (rows[x.user_id] && (!rows[x.user_id].last || new Date(x.last_at) > new Date(rows[x.user_id].last))) rows[x.user_id].last = x.last_at; }); }
-    S.students = Object.values(rows).sort((a, b) => (a.name || "").localeCompare(b.name || "", "es"));
+    const { data, error } = await sb.rpc("registered_students");
+    if (error) { app.querySelector("#st-body").innerHTML = `<p class="notice">${esc(error.message)}</p>`; return; }
+    S.students = (data || []).map(x => ({ id: x.id, name: x.full_name, groups: x.groups || [], email: x.email || "" }));
     renderStudents();
   }
   function renderStudents() {
     if (!S.students) return;
-    const q = S.q.toLowerCase(); const list = S.students.filter(s => !q || (s.name || "").toLowerCase().includes(q) || s.groups.some(g => g.name.toLowerCase().includes(q)));
+    const q = S.q.toLowerCase(); const list = S.students.filter(st => !q || (st.name || "").toLowerCase().includes(q) || st.email.toLowerCase().includes(q) || st.groups.some(g => g.toLowerCase().includes(q)));
     app.querySelector("#st-count").textContent = S.students.length;
-    app.querySelector("#st-body").innerHTML = list.length ? `<table class="stable"><tr><th>Nombre</th><th>Grupos</th><th>Tipo</th><th>Última asistencia</th></tr>${list.slice(0, 200).map(s => `<tr><td>${esc(s.name || "—")}</td><td><span class="dots" style="display:inline-flex;vertical-align:middle;margin-right:6px">${s.groups.map(g => `<i style="background:${gcolor(g)}"></i>`).join("")}</span>${esc(s.groups.map(g => g.name).join(", "))}</td><td>${s.guest ? `<span class="tag" style="background:#faf0d6;color:#7a5c14">Invitado</span>` : `<span class="tag">Cuenta</span>`}</td><td>${s.last ? fmtDate(s.last, { day: "numeric", month: "short" }) : "—"}</td></tr>`).join("")}</table>` : `<p class="meta">Nadie con ese nombre.</p>`;
+    app.querySelector("#st-body").innerHTML = list.length ? `<table class="stable"><tr><th>Nombre</th><th>Grupos</th><th>Estado</th></tr>${list.slice(0, 300).map(st => `<tr><td>${esc(st.name || "—")}<br><small class="meta">${esc(st.email)}</small></td><td>${st.groups.length ? esc(st.groups.join(", ")) : `<span class="tag closed">Sin grupo</span>`}</td><td><span class="tag">Cuenta</span></td></tr>`).join("")}</table>` : `<p class="meta">Nadie con ese nombre.</p>`;
   }
 
   await load();

@@ -53,7 +53,7 @@
       </div>
       <div class="esc-card" style="margin-top:12px"><h3>Cursos <span class="lk" id="c-new">+ Nuevo curso</span></h3>
         ${S.courses.length ? `<table class="stable"><tr><th>Curso</th><th>Tipo</th><th>Lecciones</th><th>Duración</th><th>Visible</th><th></th></tr>${S.courses.map(c => `<tr><td><b>${esc(c.title)}</b><br><small class="meta">index.html · ${esc(c.slug)}</small></td><td>${c.type === "live" ? "En directo · " + esc(S.groups.find(g => g.id === c.group_id)?.name || "sin grupo") : "A tu ritmo"}</td><td>${(c.lessons || []).length}</td><td>${c.duration_days} días</td><td>${c.open ? `<span class="tag">Sí</span>` : `<span class="tag closed">No</span>`}</td><td><div class="acts"><button data-edit="${c.id}">Editar</button><button data-copy="${c.slug}">Copiar enlace</button><button data-del="${c.id}">Borrar</button></div></td></tr>`).join("")}</table>` : `<p class="subtle">Aún no hay cursos. Crea el primero: elige el tipo, las lecciones de la biblioteca y la duración.</p>`}
-        <p class="meta" style="margin-top:10px"><button class="button secondary small" id="cleanup">Borrar inscripciones caducadas ahora</button></p></div>
+        <p class="meta" style="margin-top:10px">Las matrículas y certificados se conservan. Cuando termina el periodo de repaso se bloquean las lecciones, pero el certificado permanece disponible.</p></div>
       <div class="esc-card" style="margin-top:12px"><h3>🩺 Estado del campus <span class="lk" id="chk-run">Comprobar ahora</span></h3>
         <p class="meta">Versión instalada: <b>${esc(cfg.version || "sin versión")}</b> · <button class="button secondary small" id="chk-reload">Actualizar este dispositivo</button></p>
         <div id="chk-out"></div></div>
@@ -74,7 +74,6 @@
     app.querySelector("#dp-refresh").addEventListener("click", loadCounts);
     app.querySelector("#dp-guests").addEventListener("click", async () => { const { data, error } = await sb.rpc("purge_guests", { p_all: false }); if (error) { toast(error.message); return; } toast(`${data} invitados antiguos borrados`); loadCounts(); });
     app.querySelector("#dp-purge").addEventListener("click", purgeDialog);
-    app.querySelector("#cleanup").addEventListener("click", async () => { const { data, error } = await sb.rpc("cleanup_enrollments"); if (error) toast(error.message); else toast(`${data} inscripciones borradas`); });
   }
 
   const CHECKS = [

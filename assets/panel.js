@@ -37,7 +37,7 @@
 
   async function myCourses() {
     const { data } = await sb.from("enrollments").select("id, completed_at, ends_at, review_until, progress, course:courses(title, lessons, type)").eq("user_id", me.user.id).order("started_at", { ascending: false });
-    return (data || []).filter(e => !e.review_until || new Date(e.review_until) > Date.now());
+    return data || [];
   }
   function render(groups) {
     if (!staff) return renderStudent(groups);
@@ -51,10 +51,7 @@
         <h1 style="margin:0;font-family:Georgia,serif">Hola, ${esc(me.profile.full_name.split(" ")[0])}</h1>
         <p class="subtle">${staff ? "Prepara y dirige las clases de tus grupos." : "Aquí están tus grupos y tu próxima clase."}</p>
       </div>
-      <div class="comm-aux">
-        ${role === "coordinator" ? `<button class="button secondary" id="new-group">Nuevo grupo</button>` : ""}
-        <button class="button ${staff ? "secondary" : ""}" id="join-code">Tengo un código de grupo</button>
-      </div></header>
+      <div class="comm-aux"><a class="button secondary" href="escritorio.html">Gestionar grupos en Escritorio</a></div></header>
 
       ${(S_courses || []).length ? `<section class="panel panel-pad" style="margin-bottom:18px"><h2 style="margin:0 0 10px;font-family:Georgia,serif;font-size:1.15rem">Mis cursos</h2><div class="group-list">${S_courses.map(e => { const n = (e.course?.lessons || []).length, d = (e.progress?.done || []).length; return `<div class="session-rows" style="margin:0"><li style="border:0"><span class="title"><b>${esc(e.course?.title || "")}</b><br><small class="meta">${e.completed_at ? "Terminado · repaso hasta " + fmtDate(e.review_until, { day: "numeric", month: "short" }) : n ? `Lección ${Math.min(d + 1, n)} de ${n}` : ""}${e.ends_at && !e.completed_at ? " · hasta " + fmtDate(e.ends_at, { day: "numeric", month: "short" }) : ""}</small></span><a class="button ${e.completed_at ? "secondary" : ""} small" href="curso.html?e=${e.id}">${e.completed_at ? "Ver" : "Continuar"}</a></li></div>`; }).join("")}</div><p class="meta" style="margin:10px 0 0"><a href="index.html#cursos">Ver más cursos</a></p></section>` : ""}
       ${next ? `<section class="live-brief"><div><span class="tag">Próxima clase</span><strong>${esc(next.title)}</strong><p>${esc(next.group.name)} · ${fmtDate(next.starts_at)}</p></div>
@@ -62,7 +59,7 @@
 
       <div class="two-col">
         <div class="group-list" id="groups">
-          ${groups.length ? groups.map(groupCard).join("") : `<div class="panel panel-pad"><h2 style="margin-top:0">Todavía no estás en ningún grupo</h2><p class="subtle">${staff ? role === "coordinator" ? "Crea un grupo y asigna un maestro." : "Pide a coordinación que te asigne un grupo, o entra con un código." : "Introduce el código que te ha enviado tu maestro."}</p></div>`}
+          ${groups.length ? groups.map(groupCard).join("") : `<div class="panel panel-pad"><h2 style="margin-top:0">Todavía no estás en ningún grupo</h2><p class="subtle">${role === "coordinator" ? "Crea y organiza los grupos desde Escritorio." : "Pide a coordinación que te asigne un grupo."}</p></div>`}
         </div>
         <aside class="panel panel-pad">
           <h3 style="margin-top:0">Cómo funciona una clase</h3>
@@ -76,11 +73,7 @@
         </aside>
       </div>`;
 
-    document.getElementById("join-code").addEventListener("click", joinDialog);
-    document.getElementById("new-group")?.addEventListener("click", newGroupDialog);
-    app.querySelectorAll("[data-invite]").forEach(b => b.addEventListener("click", () => inviteDialog(groups.find(g => g.id === b.dataset.invite))));
     app.querySelectorAll("[data-new-session]").forEach(b => b.addEventListener("click", () => newSessionDialog(groups.find(g => g.id === b.dataset.newSession))));
-    app.querySelectorAll("[data-members]").forEach(b => b.addEventListener("click", () => membersDialog(groups.find(g => g.id === b.dataset.members))));
     app.querySelectorAll("[data-recur]").forEach(b => b.addEventListener("click", () => recurrenceDialog(groups.find(g => g.id === b.dataset.recur))));
     app.querySelectorAll("[data-del-session]").forEach(b => b.addEventListener("click", async () => {
       if (!confirm(`¿Borrar la clase «${b.dataset.title}»? Se borrarán sus actividades, respuestas y material.`)) return;
@@ -108,7 +101,7 @@
     const dayLabel = d => { const x = new Date(d), t = new Date(); const same = x.toDateString() === t.toDateString(); const tm = new Date(t); tm.setDate(t.getDate() + 1); return same ? "Hoy" : x.toDateString() === tm.toDateString() ? "Mañana" : x.toLocaleDateString("es-ES", { weekday: "long" }); };
     app.innerHTML = `
       <div class="hello"><div><h1>${greet}, <span>${esc(first)}</span></h1><p>Continúa aprendiendo y creciendo a tu ritmo.</p></div>
-        <div class="new" style="display:flex;gap:8px"><a href="index.html#cursos" style="display:inline-block;background:#0c70bb;color:#fff;border-radius:12px;padding:12px 20px;font-weight:800;text-decoration:none">＋ Explorar cursos</a><button class="button secondary" id="join-code">Tengo un código</button></div></div>
+        <div class="new" style="display:flex;gap:8px;flex-wrap:wrap"><a href="index.html#cursos" style="display:inline-block;background:#0c70bb;color:#fff;border-radius:12px;padding:12px 20px;font-weight:800;text-decoration:none">＋ Explorar cursos</a><button class="button secondary" id="student-logout">Cerrar sesión</button></div></div>
       <div class="rkpis">
         <a class="rkpi" href="#cursos"><span class="ic">🎓</span><span class="kt"><span>Cursos y grupos</span><b>${active.length + groups.length}</b></span><span class="arr">›</span></a>
         <a class="rkpi" href="#clases"><span class="ic">🗓</span><span class="kt"><span>Clases esta semana</span><b>${thisWeek}</b></span><span class="arr">›</span></a>
@@ -117,7 +110,7 @@
       </div>
       <div class="rgrid">
         <div class="rcard" id="cursos"><h3>📘 Continuar aprendiendo</h3>
-          ${active.length || groups.length ? active.map(e => { const n = (e.course?.lessons || []).length, d = (e.progress?.done || []).length, nxt = e.course?.lessons?.[Math.min(d, Math.max(n - 1, 0))]; return `<div class="next"><span class="ic" style="width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:#dff5ea;flex:none">📗</span><span style="flex:1"><b>${esc(e.course?.title || "")}</b><small>${n ? `${d} de ${n} lecciones${nxt ? " · Siguiente: " + esc(nxt.title || "") : ""}` : "Curso a tu ritmo"}${e.ends_at ? " · hasta " + fmtDate(e.ends_at, { day: "numeric", month: "short" }) : ""}</small></span><a class="button small" href="curso.html?e=${e.id}">▶ Continuar</a></div>`; }).join("") + groups.map(g => { const n = upcoming.find(s => s.group.id === g.id); return `<div class="next"><span class="ic" style="width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:#e3eefa;flex:none">👥</span><span style="flex:1"><b>${esc(g.name)}</b><small>${esc(g.teacher?.full_name || "")}${g.schedule_text ? " · " + esc(g.schedule_text) : ""}${n ? " · próxima clase " + fmtDate(n.starts_at, { weekday: "short", hour: "2-digit", minute: "2-digit" }) : ""}</small></span>${n ? `<a class="button ${n.status === "live" ? "gold" : "secondary"} small" href="sesion.html?id=${n.id}">${n.status === "live" ? "Entrar" : "Ver clase"}</a>` : ""}</div>`; }).join("") : `<p class="meta">Todavía no estás en ningún curso ni grupo. Pide un código a tu maestro o <a href="index.html#cursos">explora los cursos</a>.</p>`}</div>
+          ${active.length || groups.length ? active.map(e => { const n = (e.course?.lessons || []).length, d = (e.progress?.done || []).length, nxt = e.course?.lessons?.[Math.min(d, Math.max(n - 1, 0))], late = e.ends_at && new Date(e.ends_at) < Date.now(); return `<div class="next"><span class="ic" style="width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:${late ? "#fde2e6" : "#dff5ea"};flex:none">${late ? "⏳" : "📗"}</span><span style="flex:1"><b>${esc(e.course?.title || "")}</b><small>${n ? `${d} de ${n} lecciones${!late && nxt ? " · Siguiente: " + esc(nxt.title || "") : ""}` : "Curso a tu ritmo"}${e.ends_at ? " · hasta " + fmtDate(e.ends_at, { day: "numeric", month: "short" }) : ""}${late ? " · plazo terminado" : ""}</small></span><a class="button ${late ? "secondary" : ""} small" href="curso.html?e=${e.id}">${late ? "Ver estado" : "▶ Continuar"}</a></div>`; }).join("") + groups.map(g => { const n = upcoming.find(s => s.group.id === g.id); return `<div class="next"><span class="ic" style="width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:#e3eefa;flex:none">👥</span><span style="flex:1"><b>${esc(g.name)}</b><small>${esc(g.teacher?.full_name || "")}${g.schedule_text ? " · " + esc(g.schedule_text) : ""}${n ? " · próxima clase " + fmtDate(n.starts_at, { weekday: "short", hour: "2-digit", minute: "2-digit" }) : ""}</small></span>${n ? `<a class="button ${n.status === "live" ? "gold" : "secondary"} small" href="sesion.html?id=${n.id}">${n.status === "live" ? "Entrar" : "Ver clase"}</a>` : ""}</div>`; }).join("") : `<p class="meta">Todavía no estás en ningún curso ni grupo. Pide a coordinación que te asigne a tu grupo o <a href="index.html#cursos">explora los cursos</a>.</p>`}</div>
         <div class="rcard" id="clases"><h3>🕒 Próximas clases</h3>
           ${upcoming.length ? upcoming.slice(0, 4).map(s => `<div class="next"><span class="h">${dayLabel(s.starts_at)}<br><small>${new Date(s.starts_at).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</small></span><span style="flex:1"><b>${esc(s.title)}</b><small>${esc(s.group.name)} · 📹 Aula online</small></span><a class="button small ${s.status === "live" ? "gold" : ""}" href="sesion.html?id=${s.id}">Entrar</a></div>`).join("") : `<p class="meta">Sin clases próximas.</p>`}</div>
         <div class="rcard" id="tareas"><h3>📝 Tareas pendientes</h3>
@@ -130,7 +123,14 @@
           ${certs.length ? certs.map(e => `<div class="next"><span class="ic" style="width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:#faf0d6;flex:none">🏅</span><span style="flex:1"><b>${esc(e.course?.title || "")}</b><small>Terminado el ${fmtDate(e.completed_at, { day: "numeric", month: "long" })}</small></span><a class="button secondary small" href="certificado.html?e=${e.id}" target="_blank">Ver</a></div>`).join("") : `<p class="meta">Al terminar un curso, tu certificado aparecerá aquí.</p>`}</div>
       </div>
       <div class="rcard" style="margin-top:14px"><h3>⚡ Accesos rápidos</h3><div class="quick four"><a href="#clases"><span class="ic">🗓</span>Ver calendario<span class="arr">›</span></a><button id="msg-soon"><span class="ic g">✉️</span>Mis mensajes <small class="meta">· próx.</small></button><button id="com-soon"><span class="ic">👥</span>Comunidad <small class="meta">· próx.</small></button><a href="#certificados"><span class="ic g">🏅</span>Mis certificados<span class="arr">›</span></a></div></div>`;
-    document.getElementById("join-code").addEventListener("click", joinDialog);
+    document.getElementById("student-logout")?.addEventListener("click", async () => {
+      await sb.auth.signOut();
+      location.replace("entrar.html");
+    });
+    if (new URLSearchParams(location.search).get("clase") === "finalizada") {
+      toast("Clase finalizada. Gracias por asistir.");
+      history.replaceState(null, "", "panel.html");
+    }
     document.getElementById("msg-soon").addEventListener("click", () => toast("Mensajes: próximamente"));
     document.getElementById("com-soon").addEventListener("click", () => toast("Comunidad: próximamente"));
   }
@@ -148,7 +148,7 @@
       <div class="actions">
         ${(role === "coordinator" || g.teacher_id === me.user.id) ? `<button class="icon-button" title="Borrar grupo" data-del-group="${g.id}" data-title="${esc(g.name)}">🗑</button>` : ""}
         ${g.zoom_url ? `<a class="button secondary small" target="_blank" rel="noopener" href="${esc(g.zoom_url)}">Zoom del grupo</a>` : ""}
-        ${canManage ? `<button class="button secondary small" data-recur="${g.id}" title="Clases recurrentes">${g.recurrence?.mode && g.recurrence.mode !== "none" ? "🔁 " + WD[g.recurrence.weekday] + " " + g.recurrence.time : "Recurrencia"}</button><button class="button secondary small" data-members="${g.id}">Alumnos</button><button class="button secondary small" data-invite="${g.id}">Invitar</button><button class="button small" data-new-session="${g.id}">Nueva clase</button>` : ""}
+        ${canManage ? `<button class="button secondary small" data-recur="${g.id}" title="Clases recurrentes">${g.recurrence?.mode && g.recurrence.mode !== "none" ? "🔁 " + WD[g.recurrence.weekday] + " " + g.recurrence.time : "Recurrencia"}</button><a class="button secondary small" href="escritorio.html">Gestionar grupo</a><button class="button small" data-new-session="${g.id}">Nueva clase</button>` : ""}
       </div></div>
       ${sessions.length ? `<ul class="session-rows">${sessions.slice(0, 8).map(s => `<li>
           <span class="when">${fmtDate(s.starts_at)}</span>
@@ -161,90 +161,6 @@
     </article>`;
   }
 
-  function joinDialog() {
-    openDialog("Unirme a un grupo", `
-      <p class="subtle" style="margin-top:0">Escribe el código de 6 letras que te ha enviado tu maestro.</p>
-      <div class="field"><label for="code">Código</label><input id="code" maxlength="6" style="text-transform:uppercase;letter-spacing:.2em;font-size:1.3rem;text-align:center" autocomplete="off"></div>
-      <p class="form-error" id="code-error"></p>
-      <button class="button" id="code-go" style="width:100%">Entrar al grupo</button>`, d => {
-      d.querySelector("#code-go").addEventListener("click", async () => {
-        const code = d.querySelector("#code").value.trim().toUpperCase();
-        const { data: sid, error } = await sb.rpc("join_with_code_target", { p_code: code });
-        if (error) { d.querySelector("#code-error").textContent = "Código no válido o caducado."; return; }
-        dialog.close(); if (sid) { toast("Entrando a la clase…"); location.href = "sesion.html?id=" + sid; return; } toast("Ya estás en el grupo"); load();
-      });
-    });
-  }
-
-  async function newGroupDialog() {
-    const { data: teachers } = await sb.from("profiles").select("id, full_name, role").in("role", ["teacher", "coordinator"]).order("full_name");
-    openDialog("Nuevo grupo", `
-      <div class="inline-form">
-        <div class="field"><label for="g-name">Nombre</label><input id="g-name" placeholder="Jóvenes · martes"></div>
-        <div class="field"><label for="g-teacher">Maestro/a</label><select id="g-teacher">${(teachers || []).map(t => `<option value="${t.id}" ${t.id === me.user.id ? "selected" : ""}>${esc(t.full_name)}</option>`).join("")}</select></div>
-        <div class="row">
-          <div class="field"><label for="g-sched">Horario</label><input id="g-sched" placeholder="Martes 20:00"></div>
-          <div class="field"><label for="g-zoom">Enlace de Meet/Zoom (si no usáis el vídeo del campus)</label><input id="g-zoom" placeholder="https://meet.google.com/…"></div>
-        </div>
-        <div class="field"><label for="g-video">Vídeo de la clase</label><select id="g-video"><option value="jitsi">Dentro del campus (los alumnos no abren nada)</option><option value="external">Aparte, con Meet o Zoom (ventana flotante)</option></select></div>
-        <div class="field"><label for="g-desc">Descripción (opcional)</label><textarea id="g-desc" rows="2"></textarea></div>
-        <p class="form-error" id="g-error"></p>
-        <button class="button" id="g-go">Crear grupo</button>
-      </div>`, d => {
-      d.querySelector("#g-go").addEventListener("click", async () => {
-        const name = d.querySelector("#g-name").value.trim();
-        if (!name) { d.querySelector("#g-error").textContent = "Ponle un nombre al grupo."; return; }
-        const teacher_id = d.querySelector("#g-teacher").value;
-        const { data: g, error } = await sb.from("groups").insert({ name, teacher_id, schedule_text: d.querySelector("#g-sched").value.trim() || null, zoom_url: d.querySelector("#g-zoom").value.trim() || null, description: d.querySelector("#g-desc").value.trim() || null, video_provider: d.querySelector("#g-video").value }).select().single();
-        if (error) { d.querySelector("#g-error").textContent = error.message; return; }
-        await sb.from("memberships").insert({ group_id: g.id, user_id: teacher_id, role: "teacher" });
-        dialog.close(); toast("Grupo creado"); load();
-      });
-    });
-  }
-
-  function inviteDialog(g) {
-    openDialog("Invitar al grupo " + g.name, `
-      <p class="subtle" style="margin-top:0">Genera un código y compártelo por WhatsApp. Quien lo introduzca en el campus entrará en este grupo. Cada persona necesita además tener usuario: si aún no lo tiene, pídelo a coordinación con su correo.</p>
-      <div id="inv-result"></div>
-      <div class="field"><label for="inv-days">Válido durante</label><select id="inv-days"><option value="7">7 días</option><option value="30" selected>30 días</option><option value="180">6 meses</option></select></div>
-      <button class="button" id="inv-go">Generar código</button>
-      <hr style="border:0;border-top:1px solid var(--line);margin:20px 0">
-      <h3 style="margin:0 0 6px">Invitados habituales (sin registro)</h3>
-      <p class="subtle" style="margin:0 0 10px;font-size:14px">Un código fijo del grupo para quien viene cada semana pero aún no se registra. Entra con su nombre y este código; después ya ve directamente la próxima clase. Caduca a los 90 días sin venir.</p>
-      <div id="guest-result">${g.allow_guests && g.guest_code ? guestBox(g.guest_code) : ""}</div>
-      <div class="live-controls"><button class="button secondary small" id="guest-on">${g.allow_guests && g.guest_code ? "Regenerar" : "Activar código de invitados"}</button>${g.allow_guests ? `<button class="button secondary small" id="guest-off">Desactivar</button>` : ""}</div>`, d => {
-      const guestLink = code => location.href.replace(/[^/]*$/, "clase.html?c=" + code);
-      d.querySelector("#guest-on").addEventListener("click", async () => {
-        const { data: code, error } = await sb.rpc("set_group_guest_code", { p_group: g.id, p_enable: true });
-        if (error) { toast("No se pudo activar: " + error.message); return; }
-        g.guest_code = code; g.allow_guests = true;
-        d.querySelector("#guest-result").innerHTML = guestBox(code); bindGuest(d, code);
-      });
-      d.querySelector("#guest-off")?.addEventListener("click", async () => { await sb.rpc("set_group_guest_code", { p_group: g.id, p_enable: false }); dialog.close(); toast("Código de invitados desactivado"); load(); });
-      if (g.allow_guests && g.guest_code) bindGuest(d, g.guest_code);
-      function bindGuest(d, code) {
-        const msg = `Hola, te invito al grupo "${g.name}" del campus ${Campus.cfg.brand}.\nEntra aquí y escribe tu nombre: ${guestLink(code)}${g.schedule_text ? "\nNos vemos " + g.schedule_text + "." : ""}`;
-        d.querySelector("#guest-copy")?.addEventListener("click", () => copy(guestLink(code)));
-        d.querySelector("#guest-wa")?.setAttribute("href", whatsappMessage(msg));
-      }
-      d.querySelector("#inv-go").addEventListener("click", async () => {
-        const { data: code, error } = await sb.rpc("create_invitation", { p_group: g.id, p_days: Number(d.querySelector("#inv-days").value) });
-        if (error) { toast("No se pudo generar: " + error.message); return; }
-        const link = location.href.replace(/[^/]*$/, "entrar.html");
-        const msg = `Hola, te invito al grupo "${g.name}" del campus ${Campus.cfg.brand}.\n1) Entra en ${link}\n2) Pulsa "Tengo un código de grupo" y escribe: ${code}\n${g.schedule_text ? "Nos vemos " + g.schedule_text + "." : ""}`;
-        d.querySelector("#inv-result").innerHTML = `<div class="code-box"><strong>${esc(code)}</strong><span class="meta">Código del grupo</span></div>
-          <div class="live-controls"><button class="button secondary small" id="inv-copy">Copiar código</button><a class="button small" target="_blank" rel="noopener" href="${whatsappMessage(msg)}">Enviar por WhatsApp</a></div>`;
-        d.querySelector("#inv-copy").addEventListener("click", () => copy(code));
-      });
-    });
-  }
-
-  function guestBox(code) {
-    return `<div class="code-box"><strong>${esc(code)}</strong><span class="meta">Código de invitados</span></div>
-      <div class="live-controls"><button class="button secondary small" id="guest-copy">Copiar enlace</button><a class="button small" id="guest-wa" target="_blank" rel="noopener" href="#">Enviar por WhatsApp</a></div>`;
-  }
-
   async function recurrenceDialog(g) {
     const { data: tpls, error } = await sb.from("templates").select("id, title, folder").order("folder").order("title");
     if (error) { toast("Falta el parche de la Fase C en Supabase"); return; }
@@ -252,7 +168,7 @@
     const m = (g.schedule_text || "").match(/(\d{1,2})[:.h](\d{2})/); const defTime = r.time || (m ? `${m[1].padStart(2, "0")}:${m[2]}` : "20:00");
     const defWd = r.weekday ?? (WD.findIndex(w => (g.schedule_text || "").toLowerCase().includes(w.toLowerCase().slice(0, 4))) >= 0 ? WD.findIndex(w => (g.schedule_text || "").toLowerCase().includes(w.toLowerCase().slice(0, 4))) : 2);
     openDialog("Clases recurrentes · " + g.name, `<div class="inline-form">
-      <p class="subtle" style="margin:0">El campus crea sola la clase de cada semana (con dos semanas de antelación) a partir de la plantilla que elijas. Los alumnos entran con el código del grupo y ven directamente la clase de esa semana.</p>
+      <p class="subtle" style="margin:0">El campus crea sola la clase de cada semana (con dos semanas de antelación) a partir de la plantilla que elijas. Los alumnos asignados al grupo la verán automáticamente en su campus.</p>
       <div class="row"><div class="field"><label for="rc-wd">Día</label><select id="rc-wd">${WD.map((w, i) => `<option value="${i}" ${i === defWd ? "selected" : ""}>${w}</option>`).join("")}</select></div><div class="field"><label for="rc-time">Hora</label><input id="rc-time" type="time" value="${defTime}"></div></div>
       <div class="field"><label for="rc-mode">Qué clase se crea</label><select id="rc-mode"><option value="none" ${mode === "none" ? "selected" : ""}>Sin recurrencia (las creo a mano)</option><option value="empty" ${mode === "empty" ? "selected" : ""}>Clase vacía cada semana</option><option value="same" ${mode === "same" ? "selected" : ""}>Siempre la misma plantilla</option><option value="series" ${mode === "series" ? "selected" : ""}>Serie de plantillas en orden (cíclica)</option></select></div>
       <div class="field" id="rc-same-f" hidden><label for="rc-tpl">Plantilla</label><select id="rc-tpl">${(tpls || []).map(t => `<option value="${t.id}" ${r.template_id === t.id ? "selected" : ""}>${esc(t.folder)} · ${esc(t.title)}</option>`).join("")}</select></div>
@@ -273,17 +189,6 @@
         if (error) { d.querySelector("#rc-err").textContent = error.message; return; }
         dialog.close(); toast(md.value === "none" ? "Recurrencia desactivada" : "Recurrencia guardada"); load();
       });
-    });
-  }
-
-  function membersDialog(g) {
-    const rows = g.memberships.map(m => `<li><span class="avatar teal" style="width:30px;height:30px;font-size:11px">${esc(initials(m.profile?.full_name))}</span><span style="flex:1">${esc(m.profile?.full_name || "")}</span><span class="meta">${m.role === "teacher" ? "Maestro/a" : m.role === "guest" ? "Invitado/a" : "Alumno/a"}</span>${(m.role !== "teacher" && (role === "coordinator" || g.teacher_id === me.user.id)) ? `<button class="button secondary small" data-remove="${m.user_id}">Quitar</button>` : ""}</li>`).join("");
-    openDialog("Alumnos de " + g.name, rows ? `<ul class="members">${rows}</ul>` : `<p class="subtle">Todavía nadie se ha unido. Genera un código de invitación.</p>`, d => {
-      d.querySelectorAll("[data-remove]").forEach(b => b.addEventListener("click", async () => {
-        if (!confirm("¿Quitar a esta persona del grupo?")) return;
-        await sb.from("memberships").delete().match({ group_id: g.id, user_id: b.dataset.remove });
-        dialog.close(); load();
-      }));
     });
   }
 

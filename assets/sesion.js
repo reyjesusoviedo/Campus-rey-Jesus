@@ -9,6 +9,7 @@
   const me = await requireUser();
   renderShell(me, "sesion");
   const sessionId = qs("id");
+  const deferredMode = qs("deferred") === "1";
   if (!sessionId) { location.replace("panel.html"); return; }
 
   const KIND = {
@@ -180,7 +181,10 @@
   // ---------- render ----------
   function render() {
     document.body.classList.toggle("teacher", S.teacher); document.body.classList.toggle("student", !S.teacher);
-    if (me.user.is_anonymous && S.session.status === "closed" && !inGrace()) return renderGuestEnd();
+    if (!S.teacher && S.session.status === "closed" && !inGrace()) {
+      if (me.user.is_anonymous) return renderGuestEnd();
+      if (!deferredMode) return renderStudentEnd();
+    }
     renderTop(); renderMain(); renderSide(); renderBottom(); renderTools(); updateBar(); semaWidget();
     const hb = $("help-btn"); if (hb) hb.hidden = true;
   }
@@ -190,6 +194,20 @@
     S.stageFrame = null; document.body.classList.add("guest-end");
     S.ended = true; try { if (S.channel) { sb.removeChannel(S.channel); S.channel = null; } } catch {}
     document.body.innerHTML = `<div class="guest-end-screen"><div class="card">${Campus.brandMark ? Campus.brandMark() : ""}<h1>La clase ha terminado</h1><p>Gracias por venir, ${esc(me.profile.full_name.split(" ")[0])}.</p><p class="meta">Cuando tu maestro abra la siguiente clase te pasará un enlace nuevo.</p>${s.guests_see_recording && s.recording_url ? `<a class="button" target="_blank" rel="noopener" href="${esc(s.recording_url)}">Ver la grabación</a>` : ""}</div></div>`;
+  }
+  function renderStudentEnd() {
+    const s = S.session;
+    if (S.jitsi) { try { S.jitsi.executeCommand("hangup"); S.jitsi.dispose(); } catch {} S.jitsi = null; S.jitsiEl = null; }
+    S.stageFrame = null;
+    document.body.classList.add("guest-end");
+    S.ended = true;
+    try { if (S.channel) { sb.removeChannel(S.channel); S.channel = null; } } catch {}
+    const pending = s.allow_deferred ? S.activities.filter(a => a.status !== "draft" && !a.content?.auto && !S.myResponses[a.id]) : [];
+    const firstName = (me.profile.full_name || "").trim().split(/\s+/)[0] || "";
+    const deferredLink = `sesion.html?id=${encodeURIComponent(sessionId)}&deferred=1`;
+    document.body.innerHTML = `<div class="guest-end-screen"><div class="card">${Campus.brandMark ? Campus.brandMark() : ""}<h1>La clase ha terminado</h1><p>Gracias por asistir${firstName ? ", " + esc(firstName) : ""}.</p>${s.summary ? `<p><strong>Resumen:</strong> ${esc(s.summary)}</p>` : ""}<div class="live-controls" style="justify-content:center;margin-top:18px">${s.recording_url ? `<a class="button secondary" target="_blank" rel="noopener" href="${esc(s.recording_url)}">Ver la grabación</a>` : ""}${pending.length ? `<a class="button" href="${deferredLink}">Completar actividades pendientes (${pending.length})</a>` : ""}<a class="button secondary" href="panel.html">Volver a mi campus</a></div></div></div>`;
+    const backTimer = setTimeout(() => location.replace("panel.html?clase=finalizada"), 5000);
+    document.querySelectorAll("a").forEach(a => a.addEventListener("click", () => clearTimeout(backTimer), { once: true }));
   }
   function liveBadge() {
     const s = S.session;
@@ -217,9 +235,9 @@
         ${S.teacher ? semaBarHtml() + `<span class="pill">${Object.keys(S.presence).length} conectados</span><span class="rt-dot" id="rt-dot" data-on="${S.rtStatus === "SUBSCRIBED"}"></span>` : ""}
         ${S.teacher ? `<a class="button secondary small" href="biblioteca.html" target="_blank" title="Biblioteca de material">📚</a>` : ""}
         ${S.teacher && s.status !== "closed" ? `<button class="button secondary small" data-act="invite">Invitar</button>` : ""}
-        ${!S.teacher ? `<button class="button secondary small" data-act="materials">📄 Material</button>` : ""}
+        ${!S.teacher && s.status !== "closed" ? `<button class="button secondary small" data-act="materials">📄 Material</button>` : ""}
         ${S.teacher ? videoLinkHtml() : ""}
-        ${S.teacher ? `<span class="who" title="Salir"><span class="avatar teal">${esc(initials(me.profile.full_name))}</span><button class="button secondary small" data-act="logout">Salir</button></span>` : ""}
+        ${S.teacher ? `<span class="who" title="Salir de clase"><span class="avatar teal">${esc(initials(me.profile.full_name))}</span><button class="button secondary small" data-act="leave">Salir de clase</button></span>` : ""}
       </div>`;
     renderShell(me, "sesion");
     top.querySelectorAll("[data-act]").forEach(b => b.addEventListener("click", () => sessionAction(b.dataset.act)));
@@ -250,14 +268,14 @@
       return;
     }
     if (act === "invite") { inviteDialog(); return; }
-    if (act === "logout") { await sb.auth.signOut(); location.replace("entrar.html"); return; }
+    if (act === "leave") { location.replace("resumen.html"); return; }
     if (act === "materials") { materialsDialog(); return; }
     if (act === "project") { projectDialog(); return; }
     if (act === "activity") { S.ctab = "act"; renderMain(); $("main").querySelector("details.editor")?.scrollIntoView({ behavior: "smooth" }); const d = $("main").querySelector("details.editor"); if (d) d.open = true; return; }
     if (act === "objective") { await toggleNextObjective(); return; }
     if (act === "board") { if (S.session.board_active) { await toggleBoard(false); } else { S.ctab = "board"; renderMain(); } return; }
     if (act === "summary") { summaryDialog(); return; }
-    if (act === "delete-session") { if (!confirm(`¿Borrar la clase «${S.session.title}»? Se borrarán sus actividades, respuestas y material.`)) return; const { error } = await sb.from("sessions").delete().eq("id", sessionId); if (error) { toast("No se pudo borrar: " + error.message); return; } location.replace("panel.html"); return; }
+    if (act === "delete-session") { if (!confirm(`¿Borrar la clase «${S.session.title}»? Se borrarán sus actividades, respuestas y material.`)) return; const { error } = await sb.from("sessions").delete().eq("id", sessionId); if (error) { toast("No se pudo borrar: " + error.message); return; } location.replace("resumen.html"); return; }
     if (act === "quick") { quickDialog(); return; }
     if (act === "quick-close") { const q = openQuick(); if (q) { await sb.from("activities").update({ status: "closed" }).eq("id", q.id); log("activity_closed", { activity_id: q.id }); toast("Pregunta cerrada"); refreshAll(true); } return; }
     if (act === "reopen") { const { error } = await sb.rpc("reopen_session", { p_session: sessionId }); if (error) { toast("No se pudo reabrir: " + error.message); return; } toast("Clase reabierta"); refreshAll(true); }
@@ -386,7 +404,7 @@
     const base = location.href.replace(/[^/]*$/, ""), link = base + "clase.html?c=" + code, viewLink = base + "ver.html?c=" + code;
     const msg = `Clase: ${S.session.title} (${S.group.name})\nEntra aquí y escribe tu nombre:\n${link}`;
     openDialog("Invitar a esta clase", `
-      <p class="subtle" style="margin-top:0">Quien tenga este código entra solo a esta clase, sin correo ni contraseña, y caduca al terminar. Para asistentes habituales usa el código de invitados del grupo (Mis grupos → Invitar).</p>
+      <p class="subtle" style="margin-top:0">Quien tenga este enlace entra solo a esta clase, sin correo ni contraseña, y caduca al terminar. Para asistentes habituales, crea su cuenta en Equipo y asígnalos al grupo desde Escritorio.</p>
       <div class="code-box"><strong>${esc(code)}</strong><span class="meta">Código de la clase</span></div>
       <div class="link-box" style="margin:12px 0;word-break:break-all;background:#f3f8f8;border:1px dashed var(--teal-dark);border-radius:10px;padding:10px;font-size:13px">${esc(link)}</div>
       <div class="live-controls"><a class="button gold small" target="_blank" rel="noopener" href="${Campus.whatsappMessage(msg)}">Enviar por WhatsApp</a><button class="button secondary small" id="inv-copy">Copiar enlace</button><a class="button secondary small" target="_blank" rel="noopener" href="${link}">Probar el enlace</a></div>
@@ -461,11 +479,9 @@
       if (S.jitsi) { try { S.jitsi.executeCommand("hangup"); S.jitsi.dispose(); } catch {} S.jitsi = null; S.jitsiEl = null; }
       const done = s.allow_deferred ? S.activities.filter(a => a.status !== "draft" && !a.content?.auto) : [];
       if (S.focus && done.some(a => a.id === S.focus)) return renderStudentActivity(main, done.find(a => a.id === S.focus), true);
-      const pm = projectedMaterial();
-      main.innerHTML = `<div class="student-wait" style="padding:10px 0 18px"><h2>Gracias por venir</h2><p>${s.recording_url ? `<a class="button" target="_blank" rel="noopener" href="${esc(s.recording_url)}">Ver la grabación</a><br><br>Puedes hacer las actividades igualmente.` : "Cuando esté la grabación, aparecerá aquí."}</p>${s.summary ? `<p><strong>Resumen:</strong> ${esc(s.summary)}</p>` : ""}</div>
-        ${done.length ? `<p class="meta" style="text-align:center">Puedes hacer las actividades con calma; ${esc(teacherName())} las verá.</p><ul class="seq">${done.map(a => `<li><span class="kind">${KIND[a.kind]}</span><div class="row"><strong>${esc(a.title)}</strong>${S.myResponses[a.id] ? `<span class="tag">Respondida</span>` : ""}<button class="button secondary small" data-focus="${a.id}">${S.myResponses[a.id] ? "Ver" : "Hacer"}</button></div></li>`).join("")}</ul>` : s.allow_deferred ? "" : `<p class="meta" style="text-align:center">Las actividades se han cerrado.</p>`}
-        ${pm ? `<div style="margin-top:16px">${stageHtml(pm)}</div>` : ""}`;
-      if (pm) bindStage(main, pm);
+      S.stageFrame = null;
+      main.innerHTML = `<div class="student-wait" style="padding:10px 0 18px"><h2>Actividades después de clase</h2><p>${s.recording_url ? `<a class="button secondary" target="_blank" rel="noopener" href="${esc(s.recording_url)}">Ver la grabación</a><br><br>` : ""}Aquí solo aparecen las actividades que el maestro ha dejado disponibles. El material proyectado y la clase en directo ya están cerrados.</p>${s.summary ? `<p><strong>Resumen:</strong> ${esc(s.summary)}</p>` : ""}<p><a class="button secondary small" href="panel.html">Volver a mi campus</a></p></div>
+        ${done.length ? `<p class="meta" style="text-align:center">Puedes completar las actividades con calma; ${esc(teacherName())} las verá.</p><ul class="seq">${done.map(a => `<li><span class="kind">${KIND[a.kind]}</span><div class="row"><strong>${esc(a.title)}</strong>${S.myResponses[a.id] ? `<span class="tag">Respondida</span>` : ""}<button class="button secondary small" data-focus="${a.id}">${S.myResponses[a.id] ? "Ver" : "Hacer"}</button></div></li>`).join("")}</ul>` : `<p class="meta" style="text-align:center">No tienes actividades pendientes.</p>`}`;
       main.querySelectorAll("[data-focus]").forEach(b => b.addEventListener("click", async () => { S.focus = b.dataset.focus; await loadResults(S.focus); renderMain(); }));
       return;
     }
@@ -1000,7 +1016,7 @@
   }
   function materialsDialog() {
     const visible = S.materials.filter(m => m.visible);
-    openDialog("Material de hoy", visible.length ? `<ul class="mat-list">${visible.map(m => `<li>${matIcon(m)}<div class="nm"><b>${esc(m.title)}</b></div><div class="acts">${matOpenBtn(m)}</div></li>`).join("")}</ul><p class="meta" style="margin-top:14px"><button class="button secondary small" id="dlg-logout">Salir del campus</button></p>` : `<p class="subtle">${esc(teacherName())} aún no ha mostrado material.</p><p class="meta"><button class="button secondary small" id="dlg-logout">Salir del campus</button></p>`, d => { bindMaterials(d); d.querySelector("#dlg-logout")?.addEventListener("click", async () => { await sb.auth.signOut(); location.replace("entrar.html"); }); });
+    openDialog("Material de hoy", visible.length ? `<ul class="mat-list">${visible.map(m => `<li>${matIcon(m)}<div class="nm"><b>${esc(m.title)}</b></div><div class="acts">${matOpenBtn(m)}</div></li>`).join("")}</ul><p class="meta" style="margin-top:14px"><button class="button secondary small" id="dlg-logout">Volver a mi campus</button></p>` : `<p class="subtle">${esc(teacherName())} aún no ha mostrado material.</p><p class="meta"><button class="button secondary small" id="dlg-logout">Volver a mi campus</button></p>`, d => { bindMaterials(d); d.querySelector("#dlg-logout")?.addEventListener("click", () => { location.replace("panel.html"); }); });
   }
   function renderTools() {
     const t = $("c-tools"); t.hidden = !S.teacher; if (!S.teacher) return;

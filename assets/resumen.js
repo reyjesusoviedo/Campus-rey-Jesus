@@ -27,18 +27,18 @@
   app.innerHTML = `
     <div class="hello"><div><h1>${greet}, <span>${esc(first)}</span></h1><p>Aquí tienes el estado del campus hoy.</p></div>
       <div class="new" style="display:flex;gap:8px"><button id="quick-btn" style="background:#22c37a;color:#063d2a">▶ Empezar clase</button><button id="new-btn">＋ Nuevo registro ⌄</button><div class="dd" id="new-dd" hidden>
-        ${coord ? `<a href="equipo.html?nuevo=1">Alumno (dar de alta)</a>` : `<a href="panel.html?lista=1">Alumno (código)</a>`}${coord ? `<a href="equipo.html?nuevo=1">Maestro (dar de alta)</a><a href="ajustes.html#cursos">Curso</a>` : ""}<a href="escritorio.html">Grupo</a><a href="escritorio.html">Clase</a><a href="biblioteca.html">Material</a></div></div></div>
+        ${coord ? `<a href="equipo.html?nuevo=1">Alumno (dar de alta)</a>` : `<a href="seguimiento.html">Alumnos</a>`}${coord ? `<a href="equipo.html?nuevo=1">Maestro (dar de alta)</a><a href="ajustes.html#cursos">Curso</a>` : ""}<a href="escritorio.html">Grupo</a><a href="escritorio.html">Clase</a><a href="biblioteca.html">Material</a></div></div></div>
     <div class="rkpis">
       <a class="rkpi" href="seguimiento.html"><span class="ic">${I.students}</span><span class="kt"><span>Alumnos activos</span><b>${S.students_active ?? 0}</b>${S.students_new_month ? `<small>↑ +${S.students_new_month} este mes</small>` : ""}</span><span class="arr">›</span></a>
       <a class="rkpi" href="${coord ? "equipo.html" : "#"}"><span class="ic">${I.teachers}</span><span class="kt"><span>Maestros</span><b>${S.teachers ?? 0}</b></span><span class="arr">›</span></a>
       <a class="rkpi" href="${coord ? "ajustes.html#cursos" : "index.html#cursos"}"><span class="ic g">${I.courses}</span><span class="kt"><span>Cursos activos</span><b>${S.courses ?? 0}</b></span><span class="arr">›</span></a>
-      <a class="rkpi" href="panel.html?lista=1"><span class="ic g">${I.groups}</span><span class="kt"><span>Grupos</span><b>${S.groups ?? 0}</b></span><span class="arr">›</span></a>
+      <a class="rkpi" href="escritorio.html"><span class="ic g">${I.groups}</span><span class="kt"><span>Grupos</span><b>${S.groups ?? 0}</b></span><span class="arr">›</span></a>
     </div>
     <div class="rgrid">
       <div class="rcard"><h3>🕒 Actividad reciente <a class="lk" href="seguimiento.html">Ver seguimiento →</a></h3>
         ${(act.data || []).length ? act.data.map(a => `<a class="act" href="${esc(a.href || "#")}"><span class="ic ${["course", "class", "question"].includes(a.kind) ? "g" : ""}">${KI[a.kind] || "•"}</span><span><b>${esc(a.title)}</b><small>${esc(a.detail || "")} · ${ago(a.at)}</small></span></a>`).join("") : `<p class="meta">Todavía no hay actividad.</p>`}</div>
       <div class="rcard"><h3>⚡ Accesos rápidos</h3><div class="quick">
-        <a href="${coord ? "equipo.html?nuevo=1" : "panel.html?lista=1"}"><span class="ic">👤</span>Añadir alumno<span class="arr">›</span></a>
+        <a href="${coord ? "equipo.html?nuevo=1" : "seguimiento.html"}"><span class="ic">👤</span>${coord ? "Añadir alumno" : "Ver alumnos"}<span class="arr">›</span></a>
         ${coord ? `<a href="ajustes.html#cursos"><span class="ic g">📘</span>Crear curso<span class="arr">›</span></a>` : `<a href="biblioteca.html"><span class="ic g">📚</span>Biblioteca<span class="arr">›</span></a>`}
         <a href="escritorio.html"><span class="ic g">👥</span>Nuevo grupo<span class="arr">›</span></a>
         ${coord ? `<a href="escritorio.html"><span class="ic">🎓</span>Asignar maestro<span class="arr">›</span></a>` : `<a href="escritorio.html"><span class="ic">🗓</span>Nueva clase<span class="arr">›</span></a>`}
@@ -75,7 +75,7 @@
       <div class="hello"><div><h1>${greet}, <span>${esc(first)}</span></h1><p>Organiza tus clases y acompaña a tus alumnos.</p></div>
         <div class="new" style="display:flex;gap:8px"><button id="quick-btn" style="background:#22c37a;color:#063d2a;border:0;border-radius:12px;padding:12px 20px;font:inherit;font-weight:800;cursor:pointer;box-shadow:0 10px 24px rgba(34,195,122,.35)">▶ Empezar clase</button><a href="escritorio.html" style="display:inline-block;background:#0c70bb;color:#fff;border-radius:12px;padding:12px 20px;font-weight:800;text-decoration:none">Programar</a></div></div>
       <div class="rkpis">
-        <a class="rkpi" href="panel.html?lista=1"><span class="ic">${I.groups}</span><span class="kt"><span>Grupos a cargo</span><b>${groups.length}</b></span><span class="arr">›</span></a>
+        <a class="rkpi" href="escritorio.html"><span class="ic">${I.groups}</span><span class="kt"><span>Grupos a cargo</span><b>${groups.length}</b></span><span class="arr">›</span></a>
         <a class="rkpi" href="seguimiento.html"><span class="ic">${I.students}</span><span class="kt"><span>Alumnos</span><b>${students}</b></span><span class="arr">›</span></a>
         <a class="rkpi" href="escritorio.html"><span class="ic g">🗓</span><span class="kt"><span>Clases esta semana</span><b>${week.length}</b></span><span class="arr">›</span></a>
         <a class="rkpi" href="biblioteca.html"><span class="ic g">📚</span><span class="kt"><span>Materiales</span><b>${lib.count ?? 0}</b></span><span class="arr">›</span></a>
@@ -90,7 +90,7 @@
           <button id="msg-soon"><span class="ic g">✉️</span>Enviar mensaje <small class="meta">· próx.</small><span class="arr">›</span></button>
           <button id="task-soon"><span class="ic">📝</span>Crear tarea <small class="meta">· próx.</small><span class="arr">›</span></button>
           <a href="escritorio.html"><span class="ic">🗓</span>Ver calendario<span class="arr">›</span></a></div></div>
-        <div class="rcard"><h3>📘 Mis grupos <a class="lk" href="panel.html?lista=1">Ver todos →</a></h3>
+        <div class="rcard"><h3>📘 Mis grupos <a class="lk" href="escritorio.html">Ver todos →</a></h3>
           ${groups.length ? groups.map(x => { const n = nextOf(x.id); const st = x.memberships.filter(m => m.role !== "teacher").length; return `<div class="next"><span class="h" style="background:${gcolor(x)};color:#fff">●</span><span style="flex:1"><b>${esc(x.name)}</b><small>${st} alumnos${n ? " · próxima clase " + fmtDate(n.starts_at, { weekday: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : " · sin clases próximas"}</small></span>${n ? `<a class="button secondary small" href="${n.status === "live" ? "sesion.html?id=" + n.id : "preparar.html?id=" + n.id}">${n.status === "live" ? "Entrar" : "Gestionar"}</a>` : `<button class="button gold small" data-quick="${x.id}">▶ Empezar</button>`}</div>`; }).join("") : `<p class="meta">Aún no tienes grupos asignados.</p>`}</div>
         <div class="rcard"><h3>👥 Alumnos que requieren atención <a class="lk" href="seguimiento.html">Ver todos →</a></h3>
           ${fl.length ? fl.map(r => `<div class="next"><span class="avatar" style="width:36px;height:36px;font-size:12px;background:#bcd6ec;color:#0b2f6b">${esc(initials(r.full_name))}</span><span style="flex:1"><b>${esc(r.full_name)}</b><small>${esc(r.reason)}</small></span>${r.phone ? `<a class="st ${r.status}" href="${whatsappMessage(`Hola ${r.full_name.split(" ")[0]}, soy ${first}. ¿Cómo vas?`)}" target="_blank" rel="noopener" style="text-decoration:none">${r.status === "risk" ? "! Contactar" : "⚠ Revisar"}</a>` : `<span class="st ${r.status}">${r.status === "risk" ? "! Contactar" : "⚠ Revisar"}</span>`}</div>`).join("") : `<p class="meta">Todos tus alumnos van bien. 🙌</p>`}</div>
