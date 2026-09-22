@@ -29,7 +29,7 @@
       ["preparar", "Preparar clase", "escritorio.html", I.reports], ["biblioteca", "Materiales", "biblioteca.html", I.library], ["escritorio", "Calendario", "escritorio.html", I.calendar],
       ["mensajes", "Mensajes", "#", I.mail, "soon"], ["hr"], ["perfil", "Configuración", "#perfil", I.settings], ["logout", "Cerrar sesión", "#logout", I.logout]];
     const m = [["resumen", "Resumen", "resumen.html", I.home]];
-    if (coord) m.push(["alumnos", "Alumnos", "equipo.html?tab=students", I.students], ["equipo", "Maestros", "equipo.html", I.teachers], ["cursos", "Cursos", "ajustes.html#cursos", I.courses]);
+    if (coord) m.push(["equipo", "Equipo", "equipo.html", I.teachers], ["cursos", "Cursos", "ajustes.html#cursos", I.courses]);
     m.push(["panel", "Grupos", "panel.html?lista=1", I.groups], ["seguimiento", "Seguimiento", "seguimiento.html", I.follow], ["escritorio", "Calendario", "escritorio.html", I.calendar], ["biblioteca", "Biblioteca", "biblioteca.html", I.library], ["reportes", "Reportes", "#", I.reports, "soon"]);
     m.push(["hr"]);
     if (coord) m.push(["ajustes", "Configuración", "ajustes.html", I.settings]);
